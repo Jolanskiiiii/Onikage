@@ -4,7 +4,7 @@ import pygame
 
 from onikage.art.effects.village_atmosphere import VillageAtmosphere
 from onikage.art.environments.village import draw_cedar_tree, draw_village_building
-from onikage.art.objects.village import draw_lantern_lighting, draw_village_object
+from onikage.art.objects.village import draw_village_object
 from onikage.art.tiles.village import make_village_tiles
 from onikage.enemy import Enemy
 from onikage.npc import NPC
@@ -53,17 +53,12 @@ class VillageWorld:
         self.wraith = Enemy(850, 420)
         self.obstacles.append(self.wraith.rect.copy())
         self.decorations = [
-            (935, 550, "lantern"),
-            (970, 550, "lantern"),
-            (770, 475, "lantern"),
-            (910, 475, "lantern"),
-            (1045, 550, "lantern"),
-            (1045, 738, "lantern"),
             (790, 710, "shrine"),
             (490, 540, "barrel"),
             (990, 760, "barrel"),
-            (1370, 735, "lantern"),
         ]
+        self.forest_gate = pygame.Rect(770, 90, 250, 60)
+
     @staticmethod
     def _make_trees() -> list[tuple[int, int, int]]:
         randomizer = random.Random(37)
@@ -100,7 +95,6 @@ class VillageWorld:
         player_y: int | None = None,
     ) -> None:
         self._draw_tiles(surface, camera)
-        draw_lantern_lighting(surface, camera, self.decorations, self.elapsed)
         view = pygame.Rect(
             round(camera.x) - 80,
             round(camera.y) - 100,

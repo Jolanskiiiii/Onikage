@@ -15,6 +15,7 @@ from onikage.main_menu import MainMenu
 from onikage.player import Player
 from onikage.quests import Quest, QuestLog, QuestStatus
 from onikage.village import VillageWorld
+from onikage.forest import ForestWorld
 
 
 class Game:
@@ -25,7 +26,7 @@ class Game:
 
     def __init__(self) -> None:
         pygame.init()
-        pygame.display.set_caption("ONIKAGE: The Curse of the Fallen Samurai")
+        pygame.display.set_caption("ONIKAGE: The Curse of Five Mask")
         self.screen = pygame.display.set_mode(self.SCREEN_SIZE)
         self.overlay_surface = pygame.Surface(self.SCREEN_SIZE, pygame.SRCALPHA)
         self.clock = pygame.time.Clock()
@@ -33,7 +34,8 @@ class Game:
         self.state_manager = GameManager()
         self.running = True
         self.fullscreen = False
-        self.world: VillageWorld | None = None
+        self.world: VillageWorld | ForestWorld | None = None
+        self.current_map = "village"
         self.player: Player | None = None
         self.camera = pygame.Vector2()
         self.dialogue = DialogueSystem()
@@ -142,7 +144,7 @@ class Game:
             return
         enemy = self.world.find_enemy(self.player.interaction_point())
         if enemy is None:
-            self.notice = "No enemy nearby. Follow the lantern path north."
+            self.notice = "No enemy nearby. Explore the village north."
             self.notice_time = 3.0
             return
         self.battle = BattleSystem(self.player, enemy)
@@ -170,6 +172,13 @@ class Game:
                     self.notice_time = 4.0
                 elif self.battle.result == "defeat" and self.player is not None:
                     self.player.health = max(1, self.player.max_health // 2)
+                    if isinstance(self.world, ForestWorld):
+                        self.world = VillageWorld()
+                        self.current_map = "village"
+                        self.player.position.update(895, 150)
+                        self.player.rect.topleft = (895, 150)
+                        self.player.direction = "down"
+                        self.camera.update(self._camera_target())
                     self.notice = "You retreat to the village and recover. Rest before trying again."
                     self.notice_time = 4.0
                 self.battle = None
@@ -236,6 +245,7 @@ class Game:
         self.player.update(dt, pygame.key.get_pressed(), self.world.obstacles)
         self.audio.update_footsteps(dt, self.player.position != previous_position)
         self._keep_player_in_world()
+        self._check_map_transition()
         target = self._camera_target()
         easing = 1.0 - 0.001 ** dt
         self.camera += (target - self.camera) * easing
@@ -753,3 +763,29 @@ class Game:
         for index, line in enumerate(lines[:2]):
             rendered = font.render(line, True, color)
             self.screen.blit(rendered, (position[0], position[1] + index * 28))
+
+    def _check_map_transition(self) -> None:
+        if self.player is None:
+            return
+
+        if self.current_map == "village":
+            gate = getattr(self.world, "forest_gate", None)
+            if gate is not None and self.player.rect.colliderect(gate):
+                self.world = ForestWorld()
+                self.current_map = "forest"
+                self.player.position.update(895, 1120)
+                self.player.rect.topleft = (895, 1120)
+                self.player.direction = "up"
+                self.camera.update(self._camera_target())
+                self.notice = "You enter the old cedar forest."
+                self.notice_time = 4.0
+        elif isinstance(self.world, ForestWorld):
+            if self.player.rect.colliderect(self.world.exit_rect):
+                self.world = VillageWorld()
+                self.current_map = "village"
+                self.player.position.update(895, 150)
+                self.player.rect.topleft = (895, 150)
+                self.player.direction = "down"
+                self.camera.update(self._camera_target())
+                self.notice = "You return to the village."
+                self.notice_time = 4.0

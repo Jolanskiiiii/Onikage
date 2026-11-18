@@ -1,4 +1,4 @@
-# ONIKAGE: The Curse of the Fallen Samurai
+# ONIKAGE: The Curse of the Five Mask
 
 ## Project progress
 
@@ -20,15 +20,15 @@
 - The player has four facing directions and three cached frames per direction, with a two-step walk cycle and a pixel-art katana.
 - The player can walk in four directions, sprint, and collide with village scenery.
 - Movement, inventory/journal panels, and successful battle actions have sound effects.
-- A camera follows the player through a tile-based village with houses, roads, trees, a shrine, lanterns, mist, and a notice sign.
-- Village terrain uses deterministic, cached grass and road tiles; buildings and cedar trees have layered pixel details, shadows, and depth-aware occlusion.
-- Lanterns cast cached warm light, ambient fireflies drift through the village, and the mist overlay is reused instead of allocated every frame.
+- A camera follows the player through a tile-based village with houses, roads, trees, a shrine, mist, and a notice sign.
+- Ambient fireflies drift through the village, and the mist overlay is reused instead of allocated every frame.
 - Press **E** near the sign to read it. Talk to Hana to hear dialogue and accept or decline her shrine request.
 - Complete “A Prayer for the Village” by interacting with the shrine. Press **J** to open the quest journal.
 - Press **I** to see the travel pack.
 - A wraith encounter can be started by facing the wraith and pressing **E** or **C**.
 - Battle commands: **1 Attack**, **2 Defend**, **3 Spirit Slash**, **4 Use Ration**. Arrow keys or **W/S** change the selected command; **Enter** confirms. Press Enter after victory or defeat to return to the village.
 - Victory grants experience. Defeat returns the player to the village with some health restored.
+- A cedar forest map is reachable through the northern village road, with bidirectional travel and a forest altar encounter area.
 
 ## Run the game
 
@@ -50,7 +50,7 @@ In the VS Code terminal, run:
 - `onikage/art/enemies/wraith_sprite.py` builds the animated wraith frames.
 - `onikage/art/environments/battlefield.py` draws the layered combat backdrop.
 - `onikage/art/environments/village.py` draws houses and cedar trees.
-- `onikage/art/objects/village.py` draws village props and cached lantern lighting.
+- `onikage/art/objects/village.py` draws village props.
 - `onikage/art/effects/village_atmosphere.py` draws reusable mist and firefly effects.
 - `onikage/art/tiles/village.py` builds the cached village ground tiles.
 - `onikage/art/ui/panels.py` contains reusable interface frames, portraits, and item icons.
@@ -63,6 +63,7 @@ In the VS Code terminal, run:
 - `onikage/quests.py` tracks quest status.
 - `onikage/enemy.py` defines the village wraith.
 - `onikage/combat.py` resolves turn-based battle commands.
+- `onikage/forest.py` defines the first cedar forest map, obstacles, altar, atmosphere, and forest wraith.
 
 ## Verification
 
@@ -77,7 +78,6 @@ Python source compilation and headless rendering checks passed for exploration, 
 ## Not implemented yet
 
 - Five collectible masks and their abilities/consequences.
-- Additional maps and transitions to a full forest area.
 - More NPCs, enemies, quests, bosses, and battle skills.
 - Persistent leveling/stat progression beyond the current experience reward.
 - A fully interactive equipment and inventory system.
@@ -85,3 +85,4 @@ Python source compilation and headless rendering checks passed for exploration, 
 - External sprite sheets and final assets for the remaining characters, enemies, UI, audio, and music.
 - Background music and additional ambient sound effects.
 - Dedicated automated tests in the project.
+- alternate turnbased

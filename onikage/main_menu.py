@@ -221,7 +221,7 @@ class MainMenu:
         line = pygame.Rect(116, title_y + 91, 264, 2)
         pygame.draw.rect(surface, self.GOLD, line)
         subtitle = self.subtitle_font.render(
-            "THE CURSE OF THE FALLEN SAMURAI",
+            "THE CURSE OF FIVE MASK",
             True,
             (190, 157, 121),
         )
