@@ -25,6 +25,7 @@ class MainMenu:
     def __init__(self) -> None:
         self.elapsed = 0.0
         self.selected_index = 0
+        self.status_message = ""
         self.back_button = pygame.Rect(540, 430, 200, 52)
         button_labels = (
             ("NEW GAME", "new_game", True),
@@ -53,6 +54,12 @@ class MainMenu:
         self.button_font = pygame.font.SysFont("Yu Gothic UI", 22, bold=True)
         self.note_font = pygame.font.SysFont("Yu Gothic UI", 15)
 
+    def set_continue_enabled(self, enabled: bool) -> None:
+        continue_button = self.buttons[1]
+        continue_button.enabled = enabled
+        if not enabled and self.selected_index == 1:
+            self._move_selection(1)
+
     def update(self, dt: float) -> None:
         self.elapsed += dt
         for particle in self.particles:
@@ -77,7 +84,8 @@ class MainMenu:
             elif event.key in (pygame.K_DOWN, pygame.K_s):
                 self._move_selection(1)
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                return self.buttons[self.selected_index].action
+                button = self.buttons[self.selected_index]
+                return button.action if button.enabled else None
             elif event.key == pygame.K_ESCAPE:
                 return "exit"
 
@@ -221,7 +229,7 @@ class MainMenu:
         line = pygame.Rect(116, title_y + 91, 264, 2)
         pygame.draw.rect(surface, self.GOLD, line)
         subtitle = self.subtitle_font.render(
-            "THE CURSE OF FIVE MASK",
+            "THE CURSE OF THE FIVE MASKS",
             True,
             (190, 157, 121),
         )
@@ -252,6 +260,9 @@ class MainMenu:
 
         note = self.note_font.render("CONTINUE IS AVAILABLE AFTER YOUR FIRST SAVE", True, (127, 122, 116))
         surface.blit(note, (120, 667))
+        if self.status_message:
+            status = self.note_font.render(self.status_message, True, (223, 175, 128))
+            surface.blit(status, status.get_rect(center=(640, 651)))
 
     def _draw_footer(self, surface: pygame.Surface) -> None:
         left = self.note_font.render("ARROW KEYS / W S   SELECT     ENTER   CONFIRM", True, (121, 119, 119))

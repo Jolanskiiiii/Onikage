@@ -1,3 +1,4 @@
+import logging
 import math
 
 import pygame
@@ -14,8 +15,12 @@ from onikage.dialogue import DialogueSystem
 from onikage.main_menu import MainMenu
 from onikage.player import Player
 from onikage.quests import Quest, QuestLog, QuestStatus
+from onikage.save_data import GameSave, SaveError, SaveRepository, SavedQuest
 from onikage.village import VillageWorld
 from onikage.forest import ForestWorld
+
+
+logger = logging.getLogger(__name__)
 
 
 class Game:
@@ -24,13 +29,15 @@ class Game:
     SCREEN_SIZE = (1280, 720)
     TARGET_FPS = 60
 
-    def __init__(self) -> None:
+    def __init__(self, save_repository: SaveRepository | None = None) -> None:
         pygame.init()
-        pygame.display.set_caption("ONIKAGE: The Curse of Five Mask")
+        pygame.display.set_caption("ONIKAGE: The Curse of the Five Masks")
         self.screen = pygame.display.set_mode(self.SCREEN_SIZE)
         self.overlay_surface = pygame.Surface(self.SCREEN_SIZE, pygame.SRCALPHA)
         self.clock = pygame.time.Clock()
         self.menu = MainMenu()
+        self.save_repository = save_repository or SaveRepository()
+        self.menu.set_continue_enabled(self.save_repository.has_save)
         self.state_manager = GameManager()
         self.running = True
         self.fullscreen = False
@@ -42,6 +49,7 @@ class Game:
         self.battle: BattleSystem | None = None
         self.audio = GameAudio()
         self.quest_log = QuestLog()
+        self.enemy_health = {"village": 72, "forest": 84}
         self.notice = ""
         self.notice_time = 0.0
         self.visual_time = 0.0
@@ -62,6 +70,8 @@ class Game:
     def _handle_events(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                if self.player is not None:
+                    self._save_game(show_notice=False)
                 self.running = False
                 continue
 
@@ -74,6 +84,8 @@ class Game:
                 action = self.menu.handle_event(event)
                 if action == "new_game":
                     self._start_new_game()
+                elif action == "continue":
+                    self._continue_game()
                 elif action == "settings":
                     self.state_manager.transition_to(GameState.SETTINGS)
                 elif action == "exit":
@@ -87,6 +99,7 @@ class Game:
             elif state == GameState.EXPLORATION:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
+                        self._save_game(show_notice=False)
                         self.state_manager.transition_to(GameState.MENU)
                     elif event.key == pygame.K_i:
                         self.audio.play_ui(opening=True)
@@ -98,6 +111,8 @@ class Game:
                         self._interact()
                     elif event.key == pygame.K_c:
                         self._start_battle()
+                    elif event.key == pygame.K_F5:
+                        self._save_game()
             elif state == GameState.INVENTORY:
                 if event.type == pygame.KEYDOWN and event.key in (
                     pygame.K_ESCAPE,
@@ -117,8 +132,9 @@ class Game:
                     quest = self.quest_log.first_available()
                     if quest is not None:
                         self.quest_log.accept(quest.quest_id)
-                        self.notice = f"Quest accepted: {quest.title}"
-                        self.notice_time = 4.0
+                        if self._save_game(show_notice=False):
+                            self.notice = f"Quest accepted: {quest.title}"
+                            self.notice_time = 4.0
                     self.state_manager.transition_to(GameState.EXPLORATION)
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self.state_manager.transition_to(GameState.EXPLORATION)
@@ -159,6 +175,7 @@ class Game:
                 if self.battle.result == "victory" and not self.battle.experience_awarded:
                     self.player.experience += self.battle.enemy.experience_reward
                     self.battle.experience_awarded = True
+                    self.enemy_health[self.current_map] = self.battle.enemy.health
                     if self.world is not None:
                         self.world.obstacles = [
                             obstacle
@@ -171,10 +188,12 @@ class Game:
                     )
                     self.notice_time = 4.0
                 elif self.battle.result == "defeat" and self.player is not None:
+                    self.enemy_health[self.current_map] = self.battle.enemy.health
                     self.player.health = max(1, self.player.max_health // 2)
                     if isinstance(self.world, ForestWorld):
                         self.world = VillageWorld()
                         self.current_map = "village"
+                        self._apply_enemy_health()
                         self.player.position.update(895, 150)
                         self.player.rect.topleft = (895, 150)
                         self.player.direction = "down"
@@ -183,6 +202,7 @@ class Game:
                     self.notice_time = 4.0
                 self.battle = None
                 self.state_manager.transition_to(GameState.EXPLORATION)
+                self._save_game(show_notice=False)
             return
 
         if event.key in (pygame.K_UP, pygame.K_w):
@@ -212,6 +232,8 @@ class Game:
             self.audio.play_battle_action(command)
 
     def _start_new_game(self) -> None:
+        self.current_map = "village"
+        self.enemy_health = {"village": 72, "forest": 84}
         self.world = VillageWorld()
         self.player = Player(755, 580)
         self.player.direction = "right"
@@ -230,6 +252,106 @@ class Game:
             )
         )
         self.state_manager.transition_to(GameState.EXPLORATION)
+        self.menu.status_message = ""
+        self._save_game(show_notice=False)
+
+    def _continue_game(self) -> None:
+        try:
+            save = self.save_repository.load()
+        except SaveError as error:
+            self.menu.status_message = f"Continue failed: {error}"
+            return
+
+        self.current_map = save.map_id
+        self.world = VillageWorld() if save.map_id == "village" else ForestWorld()
+        self.enemy_health = {
+            "village": save.village_wraith_health,
+            "forest": save.forest_wraith_health,
+        }
+        self._apply_enemy_health()
+        self.player = Player(save.x, save.y)
+        self.player.direction = save.direction
+        self.player.health = save.health
+        self.player.stamina = save.stamina
+        self.player.level = save.level
+        self.player.experience = save.experience
+        self.player.rations = save.rations
+        self.quest_log = QuestLog()
+        for saved_quest in save.quests:
+            self.quest_log.add(
+                Quest(
+                    quest_id=saved_quest.quest_id,
+                    title=saved_quest.title,
+                    giver=saved_quest.giver,
+                    description=saved_quest.description,
+                    objective=saved_quest.objective,
+                    status=QuestStatus[saved_quest.status],
+                )
+            )
+        self.camera.update(self._camera_target())
+        self.dialogue.active = False
+        self.battle = None
+        self.state_manager.transition_to(GameState.EXPLORATION)
+        self.menu.status_message = ""
+        self.notice = f"Your journey resumes in the {self.current_map}."
+        self.notice_time = 4.0
+
+    def _save_game(self, show_notice: bool = True) -> bool:
+        if self.player is None or self.world is None:
+            self.menu.status_message = "Cannot save: no active journey."
+            return False
+
+        self.enemy_health[self.current_map] = self.world.wraith.health
+        save = GameSave(
+            map_id=self.current_map,
+            x=self.player.position.x,
+            y=self.player.position.y,
+            direction=self.player.direction,
+            health=self.player.health,
+            stamina=self.player.stamina,
+            level=self.player.level,
+            experience=self.player.experience,
+            rations=self.player.rations,
+            village_wraith_health=self.enemy_health["village"],
+            forest_wraith_health=self.enemy_health["forest"],
+            quests=tuple(
+                SavedQuest(
+                    quest_id=quest.quest_id,
+                    title=quest.title,
+                    giver=quest.giver,
+                    description=quest.description,
+                    objective=quest.objective,
+                    status=quest.status.name,
+                )
+                for quest in self.quest_log.quests
+            ),
+        )
+        try:
+            self.save_repository.save(save)
+        except SaveError as error:
+            logger.error("Could not save campaign: %s", error)
+            self.notice = f"Save failed: {error}"
+            self.notice_time = 7.0
+            self.menu.status_message = f"Save failed: {error}"
+            return False
+
+        self.menu.set_continue_enabled(True)
+        self.menu.status_message = "Journey saved. Continue is now available."
+        if show_notice:
+            self.notice = "Journey saved. Continue is now available from the title screen."
+            self.notice_time = 4.0
+        return True
+
+    def _apply_enemy_health(self) -> None:
+        if self.world is None:
+            return
+        self.world.wraith.health = self.enemy_health[self.current_map]
+        if self.world.wraith.health <= 0:
+            self.world.obstacles = [
+                obstacle
+                for obstacle in self.world.obstacles
+                if obstacle != self.world.wraith.rect
+            ]
 
     def _update(self, dt: float) -> None:
         self.visual_time += dt
@@ -291,6 +413,8 @@ class Game:
             )
         ):
             self.quest_log.complete("village_shrine_prayer")
+            if not self._save_game(show_notice=False):
+                return
             message = "Quest complete: A Prayer for the Village. The shrine glows softly."
         if message:
             self.notice = message
@@ -384,7 +508,7 @@ class Game:
         self.screen.blit(self.small_font.render("HP", True, (225, 209, 184)), (215, 63))
         self.screen.blit(self.small_font.render("STAMINA", True, (225, 209, 184)), (215, 92))
 
-        hint = self.small_font.render("WASD / ARROWS MOVE   SHIFT SPRINT   E INTERACT   C BATTLE   I ITEMS   J QUESTS", True, (231, 218, 188))
+        hint = self.small_font.render("WASD / ARROWS MOVE   SHIFT SPRINT   E INTERACT   C BATTLE   I ITEMS   J QUESTS   F5 SAVE", True, (231, 218, 188))
         hint_panel = pygame.Rect(
             (self.SCREEN_SIZE[0] - hint.get_width() - 34) // 2,
             self.SCREEN_SIZE[1] - 49,
@@ -773,19 +897,23 @@ class Game:
             if gate is not None and self.player.rect.colliderect(gate):
                 self.world = ForestWorld()
                 self.current_map = "forest"
+                self._apply_enemy_health()
                 self.player.position.update(895, 1120)
                 self.player.rect.topleft = (895, 1120)
                 self.player.direction = "up"
                 self.camera.update(self._camera_target())
                 self.notice = "You enter the old cedar forest."
                 self.notice_time = 4.0
+                self._save_game(show_notice=False)
         elif isinstance(self.world, ForestWorld):
             if self.player.rect.colliderect(self.world.exit_rect):
                 self.world = VillageWorld()
                 self.current_map = "village"
+                self._apply_enemy_health()
                 self.player.position.update(895, 150)
                 self.player.rect.topleft = (895, 150)
                 self.player.direction = "down"
                 self.camera.update(self._camera_target())
                 self.notice = "You return to the village."
                 self.notice_time = 4.0
+                self._save_game(show_notice=False)
