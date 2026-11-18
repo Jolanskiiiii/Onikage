@@ -6,6 +6,10 @@
 
 **Development environment:** Python 3.13.17 and Pygame 2.6.1.
 
+**Visual asset milestone:** Audit, cached asset pipeline, and isolated four-pack previews are documented in [ASSET_INVENTORY.md](ASSET_INVENTORY.md), [ASSET_CREDITS.md](ASSET_CREDITS.md), [VISUAL_STYLE_GUIDE.md](VISUAL_STYLE_GUIDE.md), and [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md). Feudal Japan props are now used by the starting village; the other pack samples remain preview-only. Japanese Village & Villagers remains missing.
+
+**Visual verification:** `py -3.13 -m unittest discover -s tests -v` passes 21 tests. In addition to the four pack-preview scenes, the actual `Game` renderer was captured and visually inspected at the village spawn and bridge crossing. Tests cover shrine interaction, new prop collisions, bridge passage, connected road tiles, and visible stream rendering.
+
 ## Baseline gap analysis
 
 | Area | Working foundation | Remaining gap |
@@ -58,6 +62,8 @@ This pacing totals roughly five hours before optional quests; playtests will det
 **Visual pass 3:** Procedural assets are organized by category under `onikage/art/`; village effects, village props, battle environments, and font setup now have dedicated modules.
 
 **Licensed asset pass:** The game UI now bundles DotGothic16, a Japanese-capable pixel font under the SIL Open Font License. Kenney's CC0 RPG Audio pack supplies footsteps, interface sounds, and battle effects. The pack's generic medieval tiles were reviewed but not used because they conflict with the Japanese village's visual style.
+
+**Visual pass 4:** The playable starting village now uses varied dark ground, irregular connected dirt roads, differentiated house facades, original sakura and bamboo-grove pixel art, and a wooden bridge over a stream. The village uses its existing renderer and collision list; the bridge crossing, river banks, shrine interaction, and spawn/bridge screenshots were verified. The forest and remaining regions are still pending.
 
 ## What works
 

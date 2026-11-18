@@ -10,8 +10,10 @@ def draw_village_building(
 ) -> None:
     x, y = rect.x - round(camera.x), rect.y - round(camera.y)
     roof_shift = (rect.x // 16 + rect.y // 16) % 3
-    roof_base = (35 + roof_shift * 2, 35, 42 + roof_shift)
-    wall = (102 + roof_shift * 3, 77 + roof_shift * 2, 58)
+    roof_palettes = ((35, 35, 43), (47, 34, 38), (31, 43, 40))
+    wall_palettes = ((102, 77, 58), (112, 78, 55), (105, 83, 66))
+    roof_base = roof_palettes[roof_shift]
+    wall = wall_palettes[roof_shift]
     pygame.draw.ellipse(
         surface,
         (13, 19, 19),
@@ -20,6 +22,33 @@ def draw_village_building(
     pygame.draw.rect(surface, (56, 49, 42), (x + 11, y + rect.height - 18, rect.width - 22, 16))
     pygame.draw.rect(surface, (83, 67, 53), (x + 17, y + 35, rect.width - 34, rect.height - 48))
     pygame.draw.rect(surface, wall, (x + 21, y + 39, rect.width - 42, rect.height - 48))
+    if roof_shift == 1:
+        pygame.draw.rect(
+            surface,
+            (72, 49, 39),
+            (x + 15, y + 78, rect.width - 30, 12),
+        )
+        pygame.draw.line(
+            surface,
+            (149, 104, 64),
+            (x + 15, y + 78),
+            (x + rect.width - 15, y + 78),
+            2,
+        )
+    elif roof_shift == 2:
+        pygame.draw.rect(
+            surface,
+            (132, 112, 87),
+            (x + 33, y + 48, rect.width - 66, rect.height - 68),
+        )
+        for panel_x in range(x + 40, x + rect.width - 40, 16):
+            pygame.draw.line(
+                surface,
+                (86, 67, 55),
+                (panel_x, y + 51),
+                (panel_x, y + rect.height - 23),
+                1,
+            )
     pygame.draw.rect(surface, (139, 107, 75), (x + 23, y + 43, rect.width - 46, 3))
     for beam_y in range(y + 55, y + rect.height - 18, 19):
         pygame.draw.line(surface, (73, 52, 43), (x + 23, beam_y), (x + rect.width - 23, beam_y), 2)

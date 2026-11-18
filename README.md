@@ -39,3 +39,26 @@ The bundled DotGothic16 font is licensed under the SIL Open Font License; see
 [`onikage/assets/fonts/OFL.txt`](onikage/assets/fonts/OFL.txt).
 The selected Kenney RPG Audio effects are CC0; see
 [`onikage/assets/audio/LICENSE.txt`](onikage/assets/audio/LICENSE.txt).
+Feudal Japan Props Vol.1 is used for village decorations; its bundled CC0
+notice is [`onikage/assets/artpacks/feudal_japan/README_LICENSE.txt`](onikage/assets/artpacks/feudal_japan/README_LICENSE.txt).
+
+## Asset pack previews
+
+The standalone preview shows samples from all four downloaded packs. Feudal
+Japan props are also now used in the live starting village; the other three
+packs remain preview-only:
+
+The playable village has also received original dark ground textures,
+connected winding dirt roads, differentiated house details, sakura and bamboo
+decorations, and a wooden bridge over a collision-aligned stream. This does
+not replace the game's renderer or gameplay systems.
+
+```powershell
+py -3.13 tools\asset_preview.py
+```
+
+Use **1–4** to switch between packs, **A/D** to cycle available animation
+samples, **Space** to pause, and **Esc** to exit. The source and license notes
+are in [`ASSET_CREDITS.md`](ASSET_CREDITS.md); compatibility details are in
+[`ASSET_INVENTORY.md`](ASSET_INVENTORY.md). The player, gameplay systems, maps,
+and UI are otherwise unchanged by this prop pilot.
