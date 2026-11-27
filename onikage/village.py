@@ -1,4 +1,5 @@
 import random
+from dataclasses import dataclass
 
 import pygame
 
@@ -6,9 +7,23 @@ from onikage.art.effects.village_atmosphere import VillageAtmosphere
 from onikage.art.environments.village import draw_cedar_tree, draw_village_building
 from onikage.art.objects.village import draw_lantern_lighting, draw_village_object
 from onikage.art.tiles.village import make_village_tiles
+from onikage.art.ui.panels import item_icon
 from onikage.enemy import Enemy
+from onikage.masks import MaskManager, MaskType
 from onikage.npc import NPC
-from onikage.isometric import IsoTransform, ground_depth
+from onikage.weapons import WeaponType
+
+
+@dataclass
+class WeaponPickup:
+    weapon_type: WeaponType
+    rect: pygame.Rect
+
+
+@dataclass
+class MaskPickup:
+    mask_type: MaskType
+    rect: pygame.Rect
 
 
 class VillageWorld:
@@ -20,7 +35,6 @@ class VillageWorld:
     WORLD_SIZE = (COLUMNS * TILE_SIZE, ROWS * TILE_SIZE)
 
     def __init__(self) -> None:
-        self.iso = IsoTransform()
         self.atmosphere = VillageAtmosphere(self.WORLD_SIZE)
         self.grass_tiles, self.road_tiles = make_village_tiles(self.TILE_SIZE)
         self.buildings = [
@@ -53,7 +67,14 @@ class VillageWorld:
         self.shrine_rect = pygame.Rect(786, 710, 50, 39)
         self.obstacles.append(self.shrine_rect.copy())
         self.wraith = Enemy(850, 420)
-        self.obstacles.append(self.wraith.rect.copy())
+        self.obstacles.append(self.wraith.rect)
+        self.weapon_pickups = [
+            WeaponPickup(WeaponType.YARI, pygame.Rect(1354, 682, 26, 22)),
+        ]
+        self.mask_pickups = [
+            MaskPickup(MaskType.TENGU, pygame.Rect(1346, 602, 28, 28)),
+            MaskPickup(MaskType.SUFFERING, pygame.Rect(868, 454, 28, 28)),
+        ]
         self.decorations = [
             (935, 550, "lantern"),
             (970, 550, "lantern"),
@@ -122,8 +143,13 @@ class VillageWorld:
                 and tree_bounds.colliderect(view)
             ):
                 draw_cedar_tree(surface, x, y, height, camera)
-        if player_y is None or self.wraith.rect.bottom <= player_y:
+        if self.wraith.health > 0 and (
+            player_y is None or self.wraith.rect.bottom <= player_y
+        ):
             self.wraith.draw(surface, camera)
+        for pickup in self.weapon_pickups:
+            if player_y is None or pickup.rect.bottom <= player_y:
+                self._draw_weapon_pickup(surface, pickup, camera)
         if player_y is None or self.villager.rect.bottom <= player_y:
             self.villager.draw(surface, camera)
         for x, y, kind in self.decorations:
@@ -153,8 +179,11 @@ class VillageWorld:
             tree_bounds = pygame.Rect(x - height, y - 10, height * 2, height + 12)
             if y + height > player_y and tree_bounds.colliderect(view):
                 draw_cedar_tree(surface, x, y, height, camera)
-        if self.wraith.rect.bottom > player_y:
+        if self.wraith.health > 0 and self.wraith.rect.bottom > player_y:
             self.wraith.draw(surface, camera)
+        for pickup in self.weapon_pickups:
+            if pickup.rect.bottom > player_y:
+                self._draw_weapon_pickup(surface, pickup, camera)
         if self.villager.rect.bottom > player_y:
             self.villager.draw(surface, camera)
         for x, y, kind in self.decorations:
@@ -183,6 +212,60 @@ class VillageWorld:
         if self.wraith.health > 0 and target.colliderect(self.wraith.interaction_area):
             return self.wraith
         return None
+
+    def find_weapon_pickup(self, point: tuple[int, int]) -> WeaponPickup | None:
+        target = pygame.Rect(point[0] - 14, point[1] - 14, 28, 28)
+        return next(
+            (pickup for pickup in self.weapon_pickups if target.colliderect(pickup.rect.inflate(30, 30))),
+            None,
+        )
+
+    def find_mask_pickup(self, point: tuple[int, int]) -> MaskPickup | None:
+        target = pygame.Rect(point[0] - 14, point[1] - 14, 28, 28)
+        return next(
+            (pickup for pickup in self.mask_pickups if target.colliderect(pickup.rect.inflate(30, 30))),
+            None,
+        )
+
+    def draw_mask_pickups(
+        self,
+        surface: pygame.Surface,
+        camera: pygame.Vector2,
+        player_y: int,
+        manager: MaskManager,
+        foreground: bool,
+    ) -> None:
+        for pickup in self.mask_pickups:
+            if not manager.can_acquire(pickup.mask_type):
+                continue
+            is_foreground = pickup.rect.bottom > player_y
+            if is_foreground != foreground:
+                continue
+            x = pickup.rect.x - round(camera.x)
+            y = pickup.rect.y - round(camera.y)
+            center = pickup.rect.move(-round(camera.x), -round(camera.y)).center
+            pygame.draw.circle(surface, (126, 91, 145), center, 18, 1)
+            icon = pygame.transform.scale(item_icon("mask"), (28, 28))
+            surface.blit(icon, (x, y))
+
+    @staticmethod
+    def _draw_weapon_pickup(
+        surface: pygame.Surface,
+        pickup: WeaponPickup,
+        camera: pygame.Vector2,
+    ) -> None:
+        x = pickup.rect.x - round(camera.x)
+        y = pickup.rect.y - round(camera.y)
+        pygame.draw.ellipse(surface, (13, 19, 20), (x - 3, y + 13, 32, 9))
+        pygame.draw.ellipse(surface, (126, 112, 77), (x + 2, y + 6, 21, 12), 1)
+        # Procedural ground-plane yari silhouette; no placeholder art file is referenced.
+        pygame.draw.line(surface, (90, 67, 45), (x + 4, y + 18), (x + 22, y + 2), 3)
+        pygame.draw.line(surface, (181, 193, 184), (x + 18, y + 6), (x + 24, y), 2)
+        pygame.draw.polygon(
+            surface,
+            (195, 199, 177),
+            [(x + 21, y + 3), (x + 26, y - 3), (x + 24, y + 5)],
+        )
 
     def is_near_shrine(self, point: tuple[int, int]) -> bool:
         target = pygame.Rect(point[0] - 18, point[1] - 18, 36, 36)
@@ -226,14 +309,9 @@ class VillageWorld:
         pygame.draw.line(surface, (210, 184, 142), (x + 8, y + 8), (x + 17, y + 8), 2)
         pygame.draw.line(surface, (210, 184, 142), (x + 8, y + 13), (x + 16, y + 13), 1)
 
-    def world_to_screen(self, world_x: float, world_y: float, camera: pygame.Vector2) -> tuple[int, int]:
-        """Project a world point for rendering, relative to the current camera."""
-        projected = self.iso.world_to_screen(world_x, world_y)
-        return round(projected.x - camera.x), round(projected.y - camera.y)
-
     def sorted_depth_entities(self, entities: list[tuple[float, float, object]]) -> list[object]:
-        """Stable depth sort for objects sharing the ground plane."""
-        return [entity for _, _, entity in sorted(entities, key=lambda item: ground_depth(item[0], item[1]))]
+        """Sort top-down entities by their screen-space ground Y coordinate."""
+        return [entity for _, _, entity in sorted(entities, key=lambda item: (item[1], item[0]))]
 
     def point_collides(self, rect: pygame.Rect) -> bool:
         """Return whether a ground-plane rect intersects an environmental collider."""

@@ -2,7 +2,11 @@
 
 ## Project progress
 
-**Current milestone:** A playable village exploration slice with one NPC quest and one turn-based battle encounter.
+**Current milestone:** A playable village exploration slice with one NPC quest and an integrated real-time combat encounter.
+
+**Weapon system:** Akihiro starts with a Katana. Dual Blades are the existing shrine quest reward, a Yari can be found through village exploration, and the Odachi is earned from the existing wraith encounter. Weapon profiles define separate combo, heavy attack, timing, range, stamina, speed, and hitbox data; ownership and equipment are saved.
+
+**Cursed masks:** Shadows and Wrath are gated by the existing shrine quest and wraith encounter; Tengu and Suffering are gated exploration discoveries, and Onikage awakens after the four lesser masks are acquired. Each mask has a passive, energy-based active ability, cooldown, upgrade path, and transition feedback.
 
 **Development environment:** Python 3.13.17 and Pygame 2.6.1.
 
@@ -10,9 +14,13 @@
 
 **Visual pass 2:** Dialogue, quest, inventory, and battle screens now share a framed pixel-art UI; the wraith and battle samurai reuse cached sprites.
 
-**Visual pass 3:** Procedural assets are organized by category under `onikage/art/`; village effects, village props, battle environments, and font setup now have dedicated modules.
+**Visual pass 3:** Procedural assets are organized by category under `onikage/art/`; village effects, village props, battle environments, and font setup now have dedicated modules. The game retains a traditional top-down camera and rectangular world layout.
 
 **Licensed asset pass:** The game UI now bundles DotGothic16, a Japanese-capable pixel font under the SIL Open Font License. Kenney's CC0 RPG Audio pack supplies footsteps, interface sounds, and battle effects. The pack's generic medieval tiles were reviewed but not used because they conflict with the Japanese village's visual style.
+
+## Perspective correction
+
+The project is intentionally a traditional 2D top-down RPG. The unused isometric projection module and isometric-only tests have been removed. Player WASD/arrow movement now follows the screen axes directly, diagonal movement is normalized, mouse attacks use direct screen-space aim, target assistance compares screen-space directions, and mask dash movement follows the same top-down direction vectors. Existing rectangular world coordinates, camera, collision rectangles, and Y-based foreground occlusion are retained.
 
 ## What works
 
@@ -26,8 +34,9 @@
 - Press **E** near the sign to read it. Talk to Hana to hear dialogue and accept or decline her shrine request.
 - Complete “A Prayer for the Village” by interacting with the shrine. Press **J** to open the quest journal.
 - Press **I** to see the travel pack.
-- A wraith encounter can be started by facing the wraith and pressing **E** or **C**.
-- Battle commands: **1 Attack**, **2 Defend**, **3 Spirit Slash**, **4 Use Ration**. Arrow keys or **W/S** change the selected command; **Enter** confirms. Press Enter after victory or defeat to return to the village.
+- A wraith encounter can be started by facing it and pressing **E** or **C**, or by attacking it with the mouse while nearby.
+- **Left mouse** performs a directional light attack with a three-hit combo; **right mouse** performs a stamina-costing heavy strike. Both aim directly in screen-space top-down directions and include startup, active, and recovery timing.
+- Combat updates in the village loop. Light attacks allow movement; heavy attacks lock movement during their active strike. Hits use per-attack hitboxes, enemy hurtboxes, knockback, hit reactions, and brief hit-stop.
 - Victory grants experience. Defeat returns the player to the village with some health restored.
 
 ## Run the game
@@ -45,6 +54,7 @@ In the VS Code terminal, run:
 - `onikage/game_state.py` manages screen transitions.
 - `onikage/main_menu.py` contains the existing main menu; it has not been redesigned.
 - `onikage/player.py` defines the player and movement.
+- `onikage/directions.py` provides normalized top-down movement, eight-way facing, and interaction directions.
 - `onikage/village.py` defines the starting village and its interactable objects.
 - `onikage/art/characters/player_sprite.py` builds the cached directional samurai frames.
 - `onikage/art/enemies/wraith_sprite.py` builds the animated wraith frames.
@@ -62,11 +72,14 @@ In the VS Code terminal, run:
 - `onikage/dialogue.py` presents NPC conversations.
 - `onikage/quests.py` tracks quest status.
 - `onikage/enemy.py` defines the village wraith.
-- `onikage/combat.py` resolves turn-based battle commands.
+- `onikage/combat.py` contains health, damage, hitbox/hurtbox, attack timing, combo, target assist, and real-time encounter components.
+- `onikage/weapons.py` defines the weapon catalog and player weapon inventory.
+- `onikage/save_data.py` persists player progress, weapon state, and mask ownership/upgrades to the local JSON save.
+- `onikage/masks.py` defines mask abilities, progression gates, energy, switching, upgrades, and mask save state.
 
 ## Verification
 
-Python source compilation and headless rendering checks passed for exploration, dialogue, inventory, quest offer/journal, battle screens, player and wraith sprites, and item icons. Regression checks passed for menu-to-game state transitions, dialogue and quest controls, inventory/journal controls, combat commands, victory rewards, and returning to the village. The player has also confirmed the village, quest, and battle run on their PC.
+Automated tests cover damage, duplicate hit prevention, attack frame timing, combo windows, top-down mouse attack direction, movement during light/heavy attacks, weapon profiles/switching/persistence, and mask progression, switching, energy, cooldowns, effects, upgrades, and persistence.
 
 ## Asset sources and licenses
 
@@ -76,12 +89,10 @@ Python source compilation and headless rendering checks passed for exploration, 
 
 ## Not implemented yet
 
-- Five collectible masks and their abilities/consequences.
 - Additional maps and transitions to a full forest area.
 - More NPCs, enemies, quests, bosses, and battle skills.
 - Persistent leveling/stat progression beyond the current experience reward.
 - A fully interactive equipment and inventory system.
-- Save/load and Continue.
 - External sprite sheets and final assets for the remaining characters, enemies, UI, audio, and music.
 - Background music and additional ambient sound effects.
-- Dedicated automated tests in the project.
+- Additional enemy types, attack animation art, and combat tuning.

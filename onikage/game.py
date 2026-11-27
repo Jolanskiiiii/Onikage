@@ -2,20 +2,32 @@ import math
 
 import pygame
 
-from onikage.art.characters.player_sprite import battle_player_frame
 from onikage.art.audio.sfx import GameAudio
-from onikage.art.environments.battlefield import draw_battlefield
-from onikage.art.enemies.wraith_sprite import battle_wraith_frame
 from onikage.art.fonts.ui import create_ui_fonts
 from onikage.art.ui.panels import draw_frame, item_icon
 from onikage.game_state import GameManager, GameState
-from onikage.combat import BattleSystem
+from onikage.combat import RealtimeCombat
 from onikage.dialogue import DialogueSystem
 from onikage.main_menu import MainMenu
+from onikage.masks import (
+    SHRINE_PROGRESS,
+    WRAITH_PROGRESS,
+    MaskAbilityKind,
+    MaskManager,
+    MaskType,
+    all_mask_types,
+    create_mask,
+)
 from onikage.player import Player
 from onikage.quests import Quest, QuestLog, QuestStatus
+from onikage.save_data import SaveData, SaveManager
 from onikage.village import VillageWorld
-from onikage.isometric import sprite_direction
+from onikage.weapons import (
+    WEAPON_DEFINITIONS,
+    WEAPON_ORDER,
+    WeaponInventory,
+    WeaponType,
+)
 
 
 class Game:
@@ -38,12 +50,18 @@ class Game:
         self.player: Player | None = None
         self.camera = pygame.Vector2()
         self.dialogue = DialogueSystem()
-        self.battle: BattleSystem | None = None
+        self.combat: RealtimeCombat | None = None
         self.audio = GameAudio()
         self.quest_log = QuestLog()
         self.notice = ""
         self.notice_time = 0.0
         self.visual_time = 0.0
+        self.save_manager = SaveManager()
+        saved_game = self.save_manager.load()
+        self.menu.set_continue_available(
+            saved_game is not None,
+            "Continue your journey" if saved_game is not None else None,
+        )
 
         self.title_font, self.body_font, self.small_font = create_ui_fonts()
 
@@ -75,6 +93,8 @@ class Game:
                     self.state_manager.transition_to(GameState.EXPLORATION)
                 elif action == "new_game":
                     self._start_new_game()
+                elif action == "continue":
+                    self._continue_game()
                 elif action == "settings":
                     self.state_manager.transition_to(GameState.SETTINGS)
                 elif action == "exit":
@@ -91,6 +111,8 @@ class Game:
             elif state == GameState.EXPLORATION:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
+                        if self.player is not None:
+                            self.player.mask_manager.cancel_charge()
                         self.menu.set_resume_available(True)
                         self.state_manager.transition_to(GameState.MENU)
                     elif event.key == pygame.K_i:
@@ -103,6 +125,33 @@ class Game:
                         self._interact()
                     elif event.key == pygame.K_c:
                         self._start_battle()
+                    elif event.key == pygame.K_v:
+                        self._cycle_mask(1)
+                    elif event.key == pygame.K_u:
+                        self._upgrade_equipped_mask()
+                    elif event.key == pygame.K_q:
+                        self._use_mask_ability()
+                    elif pygame.K_1 <= event.key <= pygame.K_4:
+                        self._select_weapon_slot(event.key - pygame.K_1 + 1)
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (1, 3):
+                    combat = self._combat_for_mouse_attack(event.pos)
+                    if combat is not None:
+                        aim_point = pygame.Vector2(event.pos) + self.camera
+                        if event.button == 1:
+                            started = combat.start_light(aim_point)
+                        else:
+                            started = combat.start_heavy(aim_point)
+                        if started:
+                            self.audio.play_combat_attack(heavy=event.button == 3)
+                elif event.type == pygame.MOUSEWHEEL and event.y:
+                    self._cycle_weapon(event.y)
+                elif event.type == pygame.KEYUP and event.key == pygame.K_q:
+                    if self.combat is not None and self.player is not None:
+                        aim_point = pygame.Vector2(pygame.mouse.get_pos()) + self.camera
+                        if self.player.mask_manager.charging:
+                            started = self.combat.release_mask_charge(aim_point)
+                            if started:
+                                self.audio.play_combat_attack(heavy=True)
             elif state == GameState.INVENTORY:
                 if event.type == pygame.KEYDOWN and event.key in (
                     pygame.K_ESCAPE,
@@ -141,77 +190,76 @@ class Game:
                             self.state_manager.transition_to(GameState.QUEST_OFFER)
                         else:
                             self.state_manager.transition_to(GameState.EXPLORATION)
-            elif state == GameState.COMBAT:
-                self._handle_combat_event(event)
 
     def _start_battle(self) -> None:
         if self.player is None or self.world is None:
+            return
+        if self.combat is not None and not self.combat.finished:
             return
         enemy = self.world.find_enemy(self.player.interaction_point())
         if enemy is None:
             self.notice = "No enemy nearby. Follow the lantern path north."
             self.notice_time = 3.0
             return
-        self.battle = BattleSystem(self.player, enemy)
-        self.state_manager.transition_to(GameState.COMBAT)
+        self.combat = RealtimeCombat(self.player, enemy)
+        self.notice = f"A {enemy.name} blocks the way."
+        self.notice_time = 2.5
 
-    def _handle_combat_event(self, event: pygame.event.Event) -> None:
-        if event.type != pygame.KEYDOWN or self.battle is None:
+    def _combat_for_mouse_attack(
+        self,
+        screen_position: tuple[int, int],
+    ) -> RealtimeCombat | None:
+        if self.player is None or self.world is None:
+            return None
+        if self.combat is not None and not self.combat.finished:
+            return self.combat
+
+        enemy = self.world.wraith
+        if enemy.health <= 0:
+            return None
+        aim_point = pygame.Vector2(screen_position) + self.camera
+        close_to_enemy = pygame.Vector2(self.player.rect.center).distance_to(
+            enemy.rect.center
+        ) <= 180
+        clicked_enemy = enemy.interaction_area.collidepoint(aim_point)
+        if not (close_to_enemy or clicked_enemy):
+            return None
+        self.combat = RealtimeCombat(self.player, enemy)
+        return self.combat
+
+    def _resolve_combat(self) -> None:
+        if self.combat is None or not self.combat.finished:
             return
-
-        if self.battle.finished:
-            if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                if self.battle.result == "victory" and not self.battle.experience_awarded:
-                    self.player.experience += self.battle.enemy.experience_reward
-                    self.battle.experience_awarded = True
-                    if self.world is not None:
-                        self.world.obstacles = [
-                            obstacle
-                            for obstacle in self.world.obstacles
-                            if obstacle != self.battle.enemy.rect
-                        ]
-                    self.notice = (
-                        f"Victory! You gained "
-                        f"{self.battle.enemy.experience_reward} experience."
-                    )
-                    self.notice_time = 4.0
-                elif self.battle.result == "defeat" and self.player is not None:
-                    self.player.health = max(1, self.player.max_health // 2)
-                    self.notice = "You retreat to the village and recover. Rest before trying again."
-                    self.notice_time = 4.0
-                self.battle = None
-                self.state_manager.transition_to(GameState.EXPLORATION)
-            return
-
-        if event.key in (pygame.K_UP, pygame.K_w):
-            self.battle.move_selection(-1)
-        elif event.key in (pygame.K_DOWN, pygame.K_s):
-            self.battle.move_selection(1)
-        elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4):
-            self._choose_battle_command(event.key - pygame.K_1)
-        elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-            self._choose_battle_command(self.battle.selected_command)
-
-    def _choose_battle_command(self, command: int) -> None:
-        if self.battle is None:
-            return
-
-        previous_enemy_health = self.battle.enemy.health
-        previous_stamina = self.battle.player.stamina
-        previous_rations = self.battle.player.rations
-        self.battle.choose_command(command)
-        succeeded = (
-            (command == 0 and self.battle.enemy.health < previous_enemy_health)
-            or command == 1
-            or (command == 2 and self.battle.player.stamina < previous_stamina)
-            or (command == 3 and self.battle.player.rations < previous_rations)
-        )
-        if succeeded:
-            self.audio.play_battle_action(command)
+        if self.combat.result == "victory" and not self.combat.experience_awarded:
+            reward = self.combat.enemy.experience_reward
+            self.player.experience += reward
+            acquired_odachi = self.player.weapon_inventory.acquire(WeaponType.ODACHI)
+            acquired_masks = self.player.mask_manager.advance_story(WRAITH_PROGRESS)
+            self.combat.experience_awarded = True
+            if self.world is not None:
+                self.world.obstacles = [
+                    obstacle
+                    for obstacle in self.world.obstacles
+                    if obstacle is not self.combat.enemy.rect
+                ]
+            self.notice = f"Victory! You gained {reward} experience."
+            if acquired_odachi:
+                self.notice += " Odachi acquired."
+            if acquired_masks:
+                names = ", ".join(create_mask(mask).display_name for mask in acquired_masks)
+                self.notice += f" {names} mask discovered."
+            self.notice_time = 4.0
+            self._save_progress()
+        elif self.combat.result == "defeat":
+            self.player.health = max(1, self.player.max_health // 2)
+            self.notice = "You retreat to the village and recover. Rest before trying again."
+            self.notice_time = 4.0
+        self.combat = None
 
     def _start_new_game(self) -> None:
         self.world = VillageWorld()
         self.player = Player(755, 580)
+        self.combat = None
         self.player.direction = "right"
         self.camera.update(self._camera_target())
         self.notice = ""
@@ -229,6 +277,198 @@ class Game:
         )
         self.state_manager.transition_to(GameState.EXPLORATION)
 
+    def _continue_game(self) -> None:
+        save = self.save_manager.load()
+        if save is None:
+            self.menu.set_continue_available(False)
+            self.notice = "No saved journey is available."
+            self.notice_time = 3.0
+            return
+
+        self.world = VillageWorld()
+        self.player = Player(save.player_x, save.player_y)
+        self.player.direction = save.direction
+        self.player.health = save.health
+        self.player.stamina = save.stamina
+        self.player.level = save.level
+        self.player.experience = save.experience
+        self.player.rations = save.rations
+        self.player.weapon_inventory = WeaponInventory.from_dict(save.weapon_inventory)
+        self.player.mask_manager = MaskManager.from_dict(save.mask_manager)
+        self.world.wraith.health = save.wraith_health
+        if "village_shrine_prayer" in save.completed_quest_ids:
+            self.player.mask_manager.advance_story(SHRINE_PROGRESS)
+        if self.world.wraith.health <= 0:
+            self.player.mask_manager.advance_story(WRAITH_PROGRESS)
+        self.world.weapon_pickups = [
+            pickup
+            for pickup in self.world.weapon_pickups
+            if pickup.weapon_type not in self.player.weapon_inventory.owned
+        ]
+        if self.world.wraith.health <= 0:
+            self.world.obstacles = [
+                obstacle
+                for obstacle in self.world.obstacles
+                if obstacle is not self.world.wraith.rect
+            ]
+        self.world.mask_pickups = [
+            pickup
+            for pickup in self.world.mask_pickups
+            if pickup.mask_type not in self.player.mask_manager.owned
+        ]
+
+        self.quest_log = QuestLog()
+        self.quest_log.add(
+            Quest(
+                quest_id="village_shrine_prayer",
+                title="A Prayer for the Village",
+                giver="Hana, Village Keeper",
+                description="The villagers are frightened by strange lights in the forest.",
+                objective="Visit the village shrine and offer a prayer.",
+            )
+        )
+        quest = self.quest_log.get("village_shrine_prayer")
+        if quest.quest_id in save.active_quest_ids or quest.quest_id in save.completed_quest_ids:
+            self.quest_log.accept(quest.quest_id)
+        if quest.quest_id in save.completed_quest_ids:
+            self.quest_log.complete(quest.quest_id)
+
+        self.combat = None
+        self.dialogue.active = False
+        self.notice = "Journey continued."
+        self.notice_time = 2.5
+        self.camera.update(self._camera_target())
+        self.menu.set_resume_available(True)
+        self.state_manager.transition_to(GameState.EXPLORATION)
+        self._save_progress()
+
+    def _save_progress(self) -> None:
+        if self.player is None or self.world is None:
+            return
+        self.save_manager.save(
+            SaveData(
+                player_x=self.player.position.x,
+                player_y=self.player.position.y,
+                direction=self.player.direction,
+                health=self.player.health,
+                stamina=self.player.stamina,
+                level=self.player.level,
+                experience=self.player.experience,
+                rations=self.player.rations,
+                weapon_inventory=self.player.weapon_inventory.to_dict(),
+                mask_manager=self.player.mask_manager.to_dict(),
+                active_quest_ids=[
+                    quest.quest_id
+                    for quest in self.quest_log.quests
+                    if quest.status == QuestStatus.ACTIVE
+                ],
+                completed_quest_ids=[
+                    quest.quest_id
+                    for quest in self.quest_log.quests
+                    if quest.status == QuestStatus.COMPLETED
+                ],
+                wraith_health=self.world.wraith.health,
+            )
+        )
+        self.menu.set_continue_available(True, "Continue your journey")
+
+    def _acquire_weapon(self, weapon: WeaponType) -> bool:
+        if self.player is None:
+            return False
+        acquired = self.player.weapon_inventory.acquire(weapon)
+        if acquired:
+            self._save_progress()
+        return acquired
+
+    def _select_weapon_slot(self, slot: int) -> None:
+        if self.player is None:
+            return
+        weapon = self.player.weapon_inventory.weapon_for_slot(slot)
+        if weapon is None:
+            self.notice = f"Weapon slot {slot} is locked. Find or earn that weapon first."
+            self.notice_time = 2.5
+            return
+        self._equip_weapon(weapon)
+
+    def _cycle_weapon(self, direction: int) -> None:
+        if self.player is None:
+            return
+        self._equip_weapon(self.player.weapon_inventory.next_owned(direction))
+
+    def _equip_weapon(self, weapon: WeaponType) -> bool:
+        if self.player is None:
+            return False
+        if self.combat is not None:
+            if self.combat.player_attack is not None:
+                self.notice = "Finish the current attack before switching weapons."
+                self.notice_time = 2.0
+                return False
+            equipped = self.combat.switch_weapon(weapon)
+        else:
+            equipped = self.player.weapon_inventory.equip(weapon)
+        if not equipped:
+            self.notice = "That weapon is not available yet."
+            self.notice_time = 2.0
+            return False
+        self.audio.play_ui(opening=True)
+        self.notice = f"Equipped {WEAPON_DEFINITIONS[weapon].display_name}."
+        self.notice_time = 1.8
+        self._save_progress()
+        return True
+
+    def _cycle_mask(self, direction: int) -> None:
+        if self.player is None:
+            return
+        if self.combat is not None:
+            selected = self.combat.cycle_mask(direction)
+        else:
+            selected = self.player.mask_manager.cycle(direction)
+        if selected is None:
+            self.notice = "No mask is ready to switch to."
+            self.notice_time = 1.8
+            return
+        self.audio.play_ui(opening=True)
+        self.notice = f"Mask transition: {create_mask(selected).display_name}."
+        self.notice_time = 2.0
+        self._save_progress()
+
+    def _use_mask_ability(self) -> None:
+        if self.player is None or self.combat is None:
+            self.notice = "Cursed mask abilities can be invoked during an encounter."
+            self.notice_time = 2.0
+            return
+        mask = self.player.mask_manager.mask()
+        if mask is None:
+            self.notice = "No cursed mask is equipped."
+            self.notice_time = 2.0
+            return
+        if mask.ability.kind == MaskAbilityKind.CHARGED_SLASH:
+            if self.combat.begin_mask_charge():
+                self.notice = "Hold Q, then release to unleash the charged slash."
+                self.notice_time = 2.0
+            else:
+                self.notice = "The Wrath mask is transitioning, cooling down, or short on energy."
+                self.notice_time = 2.0
+            return
+        aim_point = pygame.Vector2(pygame.mouse.get_pos()) + self.camera
+        if self.combat.activate_mask_ability(aim_point, self.world.obstacles if self.world else []):
+            self.audio.play_combat_attack(heavy=mask.ability.kind == MaskAbilityKind.LIFE_DRAIN)
+            self.notice = self.combat.message
+            self.notice_time = 2.0
+        else:
+            self.notice = self.combat.message
+            self.notice_time = 2.0
+
+    def _upgrade_equipped_mask(self) -> None:
+        if self.player is None or not self.player.mask_manager.upgrade():
+            self.notice = "An equipped mask and an upgrade seal are required."
+            self.notice_time = 2.0
+            return
+        mask = self.player.mask_manager.mask()
+        self.notice = f"{mask.display_name} upgraded to level {self.player.mask_manager.level()}."
+        self.notice_time = 2.5
+        self._save_progress()
+
     def _update(self, dt: float) -> None:
         self.visual_time += dt
         if self.notice_time > 0:
@@ -238,9 +478,22 @@ class Game:
         if self.player is None or self.world is None:
             return
 
+        if self.combat is not None:
+            self.combat.update(dt, self.world.obstacles)
+            if self.combat.hit_stop_active:
+                return
+            self._resolve_combat()
+        else:
+            self.player.mask_manager.update(dt)
+
         self.world.update(dt)
         previous_position = self.player.position.copy()
-        self.player.update(dt, pygame.key.get_pressed(), self.world.obstacles)
+        self.player.update(
+            dt,
+            pygame.key.get_pressed(),
+            self.world.obstacles,
+            movement_locked=self.combat.movement_locked if self.combat else False,
+        )
         self.audio.update_footsteps(dt, self.player.position != previous_position)
         self._keep_player_in_world()
         target = self._camera_target()
@@ -269,8 +522,33 @@ class Game:
             return
         enemy = self.world.find_enemy(self.player.interaction_point())
         if enemy is not None:
-            self.battle = BattleSystem(self.player, enemy)
-            self.state_manager.transition_to(GameState.COMBAT)
+            if self.combat is None or self.combat.finished:
+                self.combat = RealtimeCombat(self.player, enemy)
+            return
+        pickup = self.world.find_weapon_pickup(self.player.interaction_point())
+        if pickup is not None:
+            self.world.weapon_pickups.remove(pickup)
+            if self._acquire_weapon(pickup.weapon_type):
+                weapon_name = WEAPON_DEFINITIONS[pickup.weapon_type].display_name
+                self.notice = f"Found {weapon_name}. Press its number key or use the mouse wheel to equip it."
+            else:
+                self.notice = f"You already own {WEAPON_DEFINITIONS[pickup.weapon_type].display_name}."
+            self.notice_time = 3.5
+            return
+        mask_pickup = self.world.find_mask_pickup(self.player.interaction_point())
+        if mask_pickup is not None:
+            if not self.player.mask_manager.can_acquire(mask_pickup.mask_type):
+                self.notice = "The mask's seal has not yielded to your journey yet."
+                self.notice_time = 2.5
+                return
+            previous_masks = set(self.player.mask_manager.owned)
+            if self.player.mask_manager.acquire(mask_pickup.mask_type):
+                self.world.mask_pickups.remove(mask_pickup)
+                newly_acquired = self.player.mask_manager.owned - previous_masks
+                names = ", ".join(create_mask(mask).display_name for mask in newly_acquired)
+                self.notice = f"{names} mask acquired."
+                self.notice_time = 3.0
+                self._save_progress()
             return
         villager = self.world.find_villager(self.player.interaction_point())
         if villager is not None:
@@ -289,6 +567,13 @@ class Game:
         ):
             self.quest_log.complete("village_shrine_prayer")
             message = "Quest complete: A Prayer for the Village. The shrine glows softly."
+            if self._acquire_weapon(WeaponType.DUAL_BLADES):
+                message += " Dual Blades acquired."
+            acquired_masks = self.player.mask_manager.advance_story(SHRINE_PROGRESS)
+            if acquired_masks:
+                names = ", ".join(create_mask(mask).display_name for mask in acquired_masks)
+                message += f" {names} mask discovered."
+            self._save_progress()
         if message:
             self.notice = message
             self.notice_time = 5.0
@@ -329,8 +614,6 @@ class Game:
                 self._draw_quest_offer()
             elif state == GameState.QUEST_LOG:
                 self._draw_quest_log()
-        elif state == GameState.COMBAT:
-            self._draw_combat()
 
     def _draw_settings(self) -> None:
         self.menu.draw_settings_panel(self.screen, self.fullscreen)
@@ -346,12 +629,113 @@ class Game:
 
         camera = self.camera
         self.world.draw(self.screen, camera, self.player.rect.bottom)
+        self.world.draw_mask_pickups(
+            self.screen,
+            camera,
+            self.player.rect.bottom,
+            self.player.mask_manager,
+            foreground=False,
+        )
         self.player.draw(
             self.screen,
             (self.player.rect.x - round(camera.x), self.player.rect.y - round(camera.y)),
         )
         self.world.draw_foreground(self.screen, camera, self.player.rect.bottom)
+        self.world.draw_mask_pickups(
+            self.screen,
+            camera,
+            self.player.rect.bottom,
+            self.player.mask_manager,
+            foreground=True,
+        )
         self._draw_hud()
+        self._draw_mask_hud()
+        self._draw_realtime_combat()
+        self._draw_mask_feedback()
+
+    def _draw_mask_hud(self) -> None:
+        if self.player is None:
+            return
+        manager = self.player.mask_manager
+        mask = manager.mask()
+        if mask is None:
+            return
+        panel = pygame.Rect(18, 148, 310, 92)
+        draw_frame(self.screen, panel, (12, 13, 17), (119, 89, 143))
+        icon = pygame.transform.scale(item_icon("mask"), (46, 46))
+        self.screen.blit(icon, (panel.x + 12, panel.y + 20))
+        title = self.body_font.render(mask.display_name.upper(), True, (213, 192, 230))
+        self.screen.blit(title, (panel.x + 70, panel.y + 10))
+        self._draw_stat_bar(
+            panel.x + 70,
+            panel.y + 34,
+            panel.width - 84,
+            10,
+            manager.energy / manager.max_energy,
+            (128, 83, 169),
+        )
+        ability_state = "READY"
+        if manager.charging:
+            ability_state = f"CHARGING {min(100, int(manager.charge_elapsed / mask.ability.maximum_charge * 100))}%"
+        elif manager.transition_remaining > 0:
+            ability_state = "TRANSITION"
+        elif manager.cooldowns[mask.mask_type] > 0:
+            ability_state = f"COOLDOWN {manager.cooldowns[mask.mask_type]:.1f}s"
+        detail = self.small_font.render(
+            f"Q {mask.ability.name.upper()}   LV {manager.level()}   UPGRADE SEALS {manager.upgrade_tokens}",
+            True,
+            (196, 184, 207),
+        )
+        self.screen.blit(detail, (panel.x + 70, panel.y + 51))
+        state = self.small_font.render(ability_state, True, (202, 169, 221))
+        self.screen.blit(state, (panel.x + 70, panel.y + 72))
+
+    def _draw_mask_feedback(self) -> None:
+        if self.player is None:
+            return
+        manager = self.player.mask_manager
+        mask = manager.mask()
+        if mask is None:
+            return
+        colors = {
+            MaskType.WRATH: (229, 117, 69),
+            MaskType.SHADOWS: (159, 119, 202),
+            MaskType.TENGU: (111, 204, 207),
+            MaskType.SUFFERING: (117, 190, 126),
+            MaskType.ONIKAGE: (195, 59, 76),
+        }
+        color = colors[mask.mask_type]
+        camera = self.camera
+        center = (
+            self.player.rect.centerx - round(camera.x),
+            self.player.rect.centery - round(camera.y),
+        )
+        if self.combat is not None and self.combat.dash_trail_remaining > 0:
+            origin = self.combat.dash_origin or pygame.Vector2(self.player.rect.center)
+            target = self.combat.dash_target or pygame.Vector2(self.player.rect.center)
+            pygame.draw.line(
+                self.screen,
+                (*color, 210),
+                (round(origin.x - camera.x), round(origin.y - camera.y)),
+                (round(target.x - camera.x), round(target.y - camera.y)),
+                7,
+            )
+        if manager.transition_remaining > 0 or manager.charging:
+            pulse = int(36 * abs(math.sin(self.visual_time * 4.2)))
+            radius = 30 + pulse
+            pygame.draw.ellipse(self.screen, color, pygame.Rect(center[0] - radius, center[1] - radius // 2, radius * 2, radius), 2)
+        if self.combat is not None and (
+            self.combat.transformation_active
+            or self.combat.counter_remaining > 0
+            or self.combat.mask_effect_remaining > 0
+        ):
+            radius = 35 if self.combat.transformation_active else 29
+            pygame.draw.ellipse(
+                self.screen,
+                color,
+                pygame.Rect(center[0] - radius, center[1] - radius // 2, radius * 2, radius),
+                3,
+            )
 
     def _draw_hud(self) -> None:
         if self.player is None:
@@ -369,8 +753,15 @@ class Game:
         self._draw_stat_bar(31, 99, 174, 9, self.player.stamina / self.player.max_stamina, (183, 142, 69))
         self.screen.blit(self.small_font.render("HP", True, (225, 209, 184)), (215, 63))
         self.screen.blit(self.small_font.render("STAMINA", True, (225, 209, 184)), (215, 92))
+        weapon_slot = WEAPON_ORDER.index(self.player.weapon_inventory.equipped) + 1
+        weapon_label = self.small_font.render(
+            f"WEAPON {self.player.weapon_inventory.definition.display_name.upper()}  [{weapon_slot}]",
+            True,
+            (220, 190, 139),
+        )
+        self.screen.blit(weapon_label, (31, 116))
 
-        hint = self.small_font.render("WASD / ARROWS MOVE   SHIFT SPRINT   E INTERACT   C BATTLE   I ITEMS   J QUESTS", True, (231, 218, 188))
+        hint = self.small_font.render("WASD MOVE   LMB/RMB ATTACK   1-4/WHEEL WEAPON   V MASK   Q ABILITY   U UPGRADE   E INTERACT", True, (231, 218, 188))
         hint_panel = pygame.Rect(
             (self.SCREEN_SIZE[0] - hint.get_width() - 34) // 2,
             self.SCREEN_SIZE[1] - 49,
@@ -444,40 +835,97 @@ class Game:
 
     def _draw_inventory(self) -> None:
         self._draw_scrim(225)
-        panel = pygame.Rect(180, 88, 920, 544)
+        panel = pygame.Rect(90, 68, 1100, 584)
         draw_frame(self.screen, panel, (20, 20, 23))
-        title = self.title_font.render("TRAVEL PACK", True, (232, 214, 178))
+        title = self.title_font.render("ARSENAL & CURSED MASKS", True, (232, 214, 178))
         self.screen.blit(title, title.get_rect(center=(640, 137)))
         subtitle = self.small_font.render(
-            "FIELD GEAR  /  THE ROAD NORTH",
+            "WEAPON FORMS  /  SEALED SPIRITS",
             True,
             (153, 135, 108),
         )
-        self.screen.blit(subtitle, subtitle.get_rect(center=(640, 170)))
-        pygame.draw.line(self.screen, (92, 72, 53), (218, 187), (1062, 187), 1)
-        entries = (
-            ("Worn Katana", "A well-used blade. Still dependable.", "katana", "EQUIPPED"),
-            ("Travel Rations", "Simple provisions for the road.", "ration", f"x{self.player.rations if self.player else 0}"),
-            ("Supernatural Masks", "No masks discovered.", "mask", "LOCKED"),
+        self.screen.blit(subtitle, subtitle.get_rect(center=(640, 150)))
+        pygame.draw.line(self.screen, (92, 72, 53), (128, 174), (1152, 174), 1)
+        weapons_panel = pygame.Rect(120, 190, 470, 390)
+        masks_panel = pygame.Rect(610, 190, 550, 390)
+        draw_frame(self.screen, weapons_panel, (24, 24, 27), (104, 83, 61))
+        draw_frame(self.screen, masks_panel, (24, 24, 27), (113, 86, 130))
+        inventory = self.player.weapon_inventory
+        manager = self.player.mask_manager
+        weapon_heading = self.body_font.render("WEAPONS", True, (220, 190, 139))
+        self.screen.blit(weapon_heading, (weapons_panel.x + 18, weapons_panel.y + 14))
+        mask_heading = self.body_font.render(
+            f"MASKS  {len(manager.owned)}/5    UPGRADE SEALS {manager.upgrade_tokens}",
+            True,
+            (205, 178, 225),
         )
-        for index, (name, description, icon_kind, badge_text) in enumerate(entries):
-            y = 204 + index * 112
-            card = pygame.Rect(220, y, 840, 94)
-            draw_frame(self.screen, card, (27, 27, 30), (116, 92, 62))
-            self.screen.blit(item_icon(icon_kind), (card.x + 17, card.y + 15))
-            name_surface = self.body_font.render(name, True, (226, 204, 165))
-            self.screen.blit(name_surface, (card.x + 87, card.y + 17))
-            description_surface = self.small_font.render(
-                description,
-                True,
-                (168, 162, 151),
+        self.screen.blit(mask_heading, (masks_panel.x + 18, masks_panel.y + 14))
+
+        for slot, weapon_type in enumerate(WEAPON_ORDER, start=1):
+            definition = WEAPON_DEFINITIONS[weapon_type]
+            status = (
+                "EQUIPPED"
+                if inventory.equipped == weapon_type
+                else "OWNED"
+                if weapon_type in inventory.owned
+                else "LOCKED"
             )
-            self.screen.blit(description_surface, (card.x + 87, card.y + 53))
-            badge = pygame.Rect(card.right - 136, card.y + 31, 112, 34)
+            description = (
+                f"Range {definition.attack_range} · speed {definition.attack_speed:.2f} · "
+                f"{len(definition.light_combo)}-hit combo"
+            )
+            y = weapons_panel.y + 54 + (slot - 1) * 70
+            card = pygame.Rect(weapons_panel.x + 12, y, weapons_panel.width - 24, 62)
+            draw_frame(self.screen, card, (30, 29, 29), (116, 92, 62))
+            if weapon_type == WeaponType.KATANA:
+                self.screen.blit(pygame.transform.scale(item_icon("katana"), (42, 42)), (card.x + 8, card.y + 10))
+            else:
+                number = pygame.Rect(card.x + 12, card.y + 14, 34, 34)
+                draw_frame(self.screen, number, (34, 30, 27), (135, 102, 62))
+                slot_text = self.small_font.render(str(slot), True, (216, 177, 108))
+                self.screen.blit(slot_text, slot_text.get_rect(center=number.center))
+            name = self.body_font.render(definition.display_name, True, (226, 204, 165))
+            self.screen.blit(name, (card.x + 58, card.y + 7))
+            detail = self.small_font.render(description, True, (168, 162, 151))
+            self.screen.blit(detail, (card.x + 58, card.y + 34))
+            badge = pygame.Rect(card.right - 90, card.y + 16, 78, 30)
             draw_frame(self.screen, badge, (34, 30, 27), (135, 102, 62))
-            badge_surface = self.small_font.render(badge_text, True, (216, 177, 108))
+            badge_surface = self.small_font.render(status, True, (216, 177, 108))
             self.screen.blit(badge_surface, badge_surface.get_rect(center=badge.center))
-        hint = self.small_font.render("Press I or ESC to return to the village", True, (181, 169, 147))
+
+        ration_icon = pygame.transform.scale(item_icon("ration"), (40, 40))
+        self.screen.blit(ration_icon, (weapons_panel.x + 20, weapons_panel.bottom - 58))
+        ration_text = self.body_font.render(f"Travel Rations  x{self.player.rations}", True, (226, 204, 165))
+        self.screen.blit(ration_text, (weapons_panel.x + 72, weapons_panel.bottom - 52))
+
+        owned_masks = [mask_type for mask_type in all_mask_types() if mask_type in manager.owned]
+        if not owned_masks:
+            empty = self.body_font.render("No masks discovered.", True, (165, 153, 171))
+            self.screen.blit(empty, empty.get_rect(center=(masks_panel.centerx, masks_panel.centery - 18)))
+            hint_mask = self.small_font.render("Story discoveries will reveal sealed masks.", True, (143, 132, 150))
+            self.screen.blit(hint_mask, hint_mask.get_rect(center=(masks_panel.centerx, masks_panel.centery + 16)))
+        for index, mask_type in enumerate(owned_masks):
+            mask = create_mask(mask_type)
+            level = manager.level(mask_type)
+            y = masks_panel.y + 54 + index * 64
+            card = pygame.Rect(masks_panel.x + 12, y, masks_panel.width - 24, 58)
+            draw_frame(self.screen, card, (31, 29, 34), (132, 100, 151))
+            icon = pygame.transform.scale(item_icon("mask"), (42, 42))
+            self.screen.blit(icon, (card.x + 8, card.y + 8))
+            title_color = (222, 194, 237) if manager.equipped == mask_type else (207, 194, 213)
+            mask_name = self.body_font.render(f"{mask.display_name}  ·  LV {level}", True, title_color)
+            self.screen.blit(mask_name, (card.x + 60, card.y + 5))
+            mask_detail = self.small_font.render(
+                f"{mask.ability.name}  /  {mask.description}",
+                True,
+                (166, 157, 174),
+            )
+            self.screen.blit(mask_detail, (card.x + 60, card.y + 31))
+            if manager.equipped == mask_type:
+                badge = self.small_font.render("EQUIPPED", True, (223, 186, 239))
+                self.screen.blit(badge, (card.right - badge.get_width() - 12, card.y + 5))
+
+        hint = self.small_font.render("V switch mask  ·  Q ability  ·  U upgrade  ·  I or ESC to return", True, (181, 169, 147))
         self.screen.blit(hint, hint.get_rect(center=(640, 587)))
 
     def _draw_quest_offer(self) -> None:
@@ -597,134 +1045,82 @@ class Game:
         hint = self.small_font.render("Press J or ESC to return to the village", True, (181, 169, 147))
         self.screen.blit(hint, hint.get_rect(center=(640, 608)))
 
-    def _draw_combat(self) -> None:
-        if self.battle is None:
-            self.screen.fill((12, 12, 18))
+    def _draw_realtime_combat(self) -> None:
+        if self.combat is None or self.player is None:
             return
-
-        self._draw_combat_background()
-        frame = int(self.visual_time * 2) % 3
-        pygame.draw.ellipse(self.screen, (12, 15, 19), (244, 394, 145, 22))
-        pygame.draw.ellipse(self.screen, (12, 15, 19), (850, 396, 157, 22))
-        if self.player is not None:
-            self.screen.blit(
-                battle_player_frame(sprite_direction(self.player.direction), frame),
-                (252, 205),
-            )
-        self.screen.blit(
-            battle_wraith_frame(int(self.visual_time * 2) % 2),
-            (854, 205),
-        )
-        if "spirit light" in self.battle.message.lower():
-            shimmer = int(130 + 55 * abs(math.sin(self.visual_time * 7)))
-            slash = (171, 230, min(255, shimmer + 20))
-            pygame.draw.line(self.screen, slash, (385, 295), (782, 214), 5)
-            pygame.draw.line(self.screen, (235, 244, 217), (400, 290), (790, 211), 2)
-
-        title = self.title_font.render("ENCOUNTER", True, (231, 214, 181))
-        self.screen.blit(title, title.get_rect(center=(640, 52)))
-        self._draw_battle_status(
-            pygame.Rect(112, 432, 430, 94),
-            "EXILED SAMURAI",
-            self.player.health if self.player else 0,
-            self.player.max_health if self.player else 1,
-            self.player.stamina if self.player else 0,
-            self.player.max_stamina if self.player else 1,
-        )
-        self._draw_battle_status(
-            pygame.Rect(738, 432, 430, 94),
-            self.battle.enemy.name.upper(),
-            self.battle.enemy.health,
-            self.battle.enemy.max_health,
-            None,
-            None,
-        )
-
-        panel = pygame.Rect(90, 541, 1100, 147)
-        draw_frame(self.screen, panel, (13, 14, 19))
-        self._draw_wrapped_text(
-            self.battle.message,
-            self.body_font,
-            (panel.x + 24, panel.y + 13),
-            panel.width - 48,
-            (231, 218, 193),
-        )
-
-        if self.battle.finished:
-            label = "VICTORY" if self.battle.result == "victory" else "DEFEAT"
-            result_panel = pygame.Rect(407, 212, 466, 112)
-            draw_frame(self.screen, result_panel, (28, 23, 22), (190, 146, 83))
-            result = self.title_font.render(
-                label,
-                True,
-                (232, 203, 151) if self.battle.result == "victory" else (196, 123, 108),
-            )
-            self.screen.blit(result, result.get_rect(center=(640, 252)))
-            hint = self.small_font.render("Press Enter to return to the village", True, (209, 195, 172))
-            self.screen.blit(hint, hint.get_rect(center=(640, 291)))
-            return
-
-        for index, command in enumerate(self.battle.COMMANDS):
-            x = 112 + index * 268
-            selected = index == self.battle.selected_command
-            button = pygame.Rect(x, 614, 248, 51)
-            draw_frame(
+        camera = self.camera
+        hitbox = self.combat.visible_hitbox
+        if hitbox is not None:
+            visible = hitbox.move(-round(camera.x), -round(camera.y))
+            pygame.draw.line(
                 self.screen,
-                button,
-                (48, 37, 31) if selected else (24, 25, 29),
-                (211, 170, 105) if selected else (86, 79, 69),
+                (205, 230, 219),
+                (self.player.rect.centerx - round(camera.x), self.player.rect.bottom - round(camera.y) - 5),
+                visible.center,
+                3,
             )
-            pygame.draw.rect(
-                self.screen,
-                (111, 63, 45) if selected else (41, 42, 44),
-                (button.x + 12, button.y + 11, 30, 28),
-            )
-            label = self.small_font.render(
-                str(index + 1),
-                True,
-                (236, 218, 187) if selected else (173, 166, 152),
-            )
-            self.screen.blit(label, label.get_rect(center=(button.x + 27, button.centery)))
-            command_label = self.small_font.render(
-                command.upper(),
-                True,
-                (236, 218, 187) if selected else (173, 166, 152),
-            )
-            self.screen.blit(command_label, command_label.get_rect(center=(button.centerx + 20, button.centery)))
+            pygame.draw.rect(self.screen, (175, 220, 206), visible, 2, border_radius=5)
 
-    def _draw_combat_background(self) -> None:
-        draw_battlefield(self.screen, self.visual_time)
-
-    def _draw_battle_status(
-        self,
-        panel: pygame.Rect,
-        name: str,
-        health: int,
-        max_health: int,
-        stamina: float | None,
-        max_stamina: float | None,
-    ) -> None:
-        draw_frame(self.screen, panel, (13, 14, 19), (150, 117, 77))
-        label = self.small_font.render(name, True, (230, 211, 177))
-        self.screen.blit(label, (panel.x + 17, panel.y + 10))
+        enemy = self.combat.enemy
+        panel = pygame.Rect(self.SCREEN_SIZE[0] - 333, 18, 315, 108)
+        draw_frame(self.screen, panel, (12, 13, 17), (138, 82, 65))
+        label = self.small_font.render(enemy.name.upper(), True, (230, 211, 177))
+        self.screen.blit(label, (panel.x + 13, panel.y + 10))
         self._draw_stat_bar(
-            panel.x + 16,
-            panel.y + 39,
-            panel.width - 32,
-            13,
-            max(0, health) / max(1, max_health),
+            panel.x + 13,
+            panel.y + 35,
+            panel.width - 26,
+            12,
+            enemy.health / max(1, enemy.max_health),
             (157, 55, 55),
         )
-        hp_text = self.small_font.render(f"HP  {health} / {max_health}", True, (221, 213, 197))
-        self.screen.blit(hp_text, (panel.x + 16, panel.y + 61))
-        if stamina is not None and max_stamina is not None:
-            self._draw_stat_bar(
-                panel.x + panel.width - 126,
-                panel.y + 66,
-                108,
-                8,
-                stamina / max(1, max_stamina),
-                (185, 140, 66),
+        phase = "READY"
+        if self.combat.player_attack is not None:
+            phase = self.combat.player_attack.state.name
+        detail = self.small_font.render(
+            f"{enemy.health}/{enemy.max_health} HP    COMBO {self.combat.combo.step}/3    {phase}",
+            True,
+            (197, 184, 162),
+        )
+        self.screen.blit(detail, (panel.x + 13, panel.y + 58))
+        message = self.small_font.render(
+            self.combat.message,
+            True,
+            (224, 202, 164),
+        )
+        self.screen.blit(message, (panel.x + 13, panel.y + 82))
+
+        enemy_rect = enemy.rect.move(-round(camera.x), -round(camera.y))
+        if self.combat.enemy_state.hit_reaction_remaining > 0:
+            pygame.draw.ellipse(
+                self.screen,
+                (226, 107, 84),
+                enemy_rect.inflate(12, 10),
+                2,
+            )
+        elif self.combat.enemy_attack is not None:
+            attack_state = self.combat.enemy_attack.state
+            telegraph_color = (212, 151, 83) if attack_state.name == "STARTUP" else (225, 96, 78)
+            pygame.draw.ellipse(self.screen, telegraph_color, enemy_rect.inflate(15, 13), 2)
+            if attack_state.name == "ACTIVE":
+                pygame.draw.line(
+                    self.screen,
+                    (234, 133, 95),
+                    enemy_rect.center,
+                    (
+                        self.player.rect.centerx - round(camera.x),
+                        self.player.rect.centery - round(camera.y),
+                    ),
+                    4,
+                )
+
+        if self.combat.player_state.hit_reaction_remaining > 0:
+            player_rect = self.player.rect.move(-round(camera.x), -round(camera.y))
+            pygame.draw.ellipse(
+                self.screen,
+                (226, 107, 84),
+                player_rect.inflate(10, 8),
+                2,
             )
 
     def _draw_wrapped_text(

@@ -1,6 +1,6 @@
 # ONIKAGE: The Curse of the Fallen Samurai
 
-A 2D pixel-art samurai adventure built with Python 3.13 and Pygame 2.6.
+A traditional top-down 2D pixel-art samurai adventure built with Python 3.13 and Pygame 2.6.
 
 ## Run
 
@@ -16,13 +16,20 @@ python main.py
 - **WASD** or **Arrow keys**: Move
 - **Shift**: Sprint
 - **E**: Interact
-- **C**: Start a nearby battle
+- **Left mouse button**: Light attack (three-hit combo)
+- **Right mouse button**: Heavy attack (committed strike)
+- **1–4** or **mouse wheel**: Select/cycle owned weapons
+- **V**: Switch between acquired masks
+- **Q**: Use the equipped mask ability (hold/release for Wrath)
+- **U**: Upgrade the equipped mask when an upgrade seal is available
+- **C**: Engage a nearby enemy
 - **I**: Inventory
 - **J**: Quest journal
 - **F11**: Toggle fullscreen
-- **1–4**: Choose a battle command
-- **W/S** or **Arrow keys**: Select a battle command
-- **Enter**: Confirm a battle command or continue after battle
+
+Akihiro starts with the Katana. The Yari is found through village exploration, Dual Blades are earned by completing the existing shrine quest, and the Odachi is awarded for defeating the existing wraith encounter. Weapon unlocks and the equipped weapon are saved automatically.
+
+Cursed Masks are discovered only as the existing story progresses: the shrine quest reveals Shadows and opens the Tengu cache, the wraith reveals Wrath and opens the Suffering relic, and Onikage awakens after the four lesser masks are collected. Mask energy, upgrades, ownership, and equipment are saved automatically.
 
 See [PROGRESS_REPORT.md](PROGRESS_REPORT.md) for gameplay details and project status.
 
