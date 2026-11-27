@@ -102,9 +102,11 @@ class Player:
 
     def draw(self, surface: pygame.Surface, screen_position: tuple[int, int]) -> None:
         x, y = screen_position
+        # The sprite is larger than the collision body. Keep its feet anchored
+        # to the same ground position so collision and depth sorting stay stable.
         frame = 1 + int(self.walk_time * 7) % 2 if self.moving else 0
         pygame.draw.ellipse(surface, (13, 16, 17), (x - 1, y + 29, 26, 7))
-        surface.blit(player_frame(sprite_direction(self.direction), frame), (x - 4, y - 10))
+        surface.blit(player_frame(sprite_direction(self.direction), frame), (x - 12, y - 28))
 
     @property
     def ground_position(self) -> pygame.Vector2:

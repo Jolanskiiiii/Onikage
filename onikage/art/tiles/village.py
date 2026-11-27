@@ -27,6 +27,14 @@ def make_village_tiles(
             y = rng.randrange(3, tile_size - 5)
             pygame.draw.line(grass, (64, 77, 50), (x, y + 3), (x + 1, y), 1)
             grass.set_at((x + 2, y + 2), (76, 80, 52))
+        # Tiny moss blooms and scattered leaf pixels break up the repeated ground.
+        for _ in range(4):
+            x = rng.randrange(3, tile_size - 3)
+            y = rng.randrange(3, tile_size - 3)
+            accent = rng.choice(((81, 91, 57), (93, 79, 53), (54, 72, 48)))
+            grass.set_at((x, y), accent)
+            if rng.random() < 0.45:
+                grass.set_at((x + 1, y), (accent[0] + 8, accent[1] + 5, accent[2] + 3))
         grass_tiles.append(grass)
 
         path = pygame.Surface((tile_size, tile_size))
@@ -44,6 +52,11 @@ def make_village_tiles(
             x = rng.randrange(2, tile_size - 2)
             y = rng.randrange(2, tile_size - 2)
             pygame.draw.rect(path, (54, 48, 42), (x, y, 2, 1))
+        for _ in range(3):
+            x = rng.randrange(3, tile_size - 4)
+            y = rng.randrange(3, tile_size - 4)
+            pygame.draw.rect(path, (119, 97, 75), (x, y, 2, 1))
+            path.set_at((x + 1, y + 1), (58, 51, 44))
         path_tiles.append(path)
 
     return tuple(grass_tiles), tuple(path_tiles)

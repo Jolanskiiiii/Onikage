@@ -57,6 +57,16 @@ def draw_village_building(
         for tile_x in range(x + inset + 8, x + rect.width - inset, 18):
             pygame.draw.line(surface, (29, 32, 39), (tile_x, row), (tile_x, row + 5), 1)
     pygame.draw.line(surface, (113, 88, 66), (x - 8, y + 48), (x + rect.width + 8, y + 48), 3)
+    # Layered roof highlights and small tile seams give the silhouette more depth.
+    for ridge_y, inset in ((y + 13, 30), (y + 23, 21), (y + 33, 12)):
+        pygame.draw.line(
+            surface,
+            (76, 77, 79),
+            (x + inset, ridge_y),
+            (x + rect.width - inset, ridge_y),
+            1,
+        )
+    pygame.draw.line(surface, (139, 105, 72), (x + 23, y + 45), (x + rect.width - 23, y + 45), 1)
     pygame.draw.line(
         surface,
         (94, 70, 57),
@@ -148,4 +158,10 @@ def draw_cedar_tree(
         (sx + width // 3 - 3, sy + 21),
     ):
         pygame.draw.rect(surface, (72, 83, 53), (leaf_x, leaf_y, 3, 2))
+    # Branch tips, moss flecks, and bark grooves keep the canopy readable at a glance.
+    pygame.draw.line(surface, (47, 70, 52), (sx - width // 4, sy + 15), (sx - width // 2 + 4, sy + 23), 1)
+    pygame.draw.line(surface, (47, 70, 52), (sx + width // 5, sy + 13), (sx + width // 2 - 5, sy + 21), 1)
+    pygame.draw.rect(surface, (105, 112, 67), (sx - width // 5, sy + 17, 2, 2))
+    pygame.draw.rect(surface, (105, 112, 67), (sx + width // 4, sy + 23, 2, 2))
+    pygame.draw.line(surface, (111, 76, 49), (sx + 1, sy + 18), (sx + 1, sy + height - 4), 1)
     pygame.draw.rect(surface, (92, 82, 51), (sx - 1, sy + 25, 2, 1))

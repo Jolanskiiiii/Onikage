@@ -16,6 +16,10 @@
 
 **Visual pass 3:** Procedural assets are organized by category under `onikage/art/`; village effects, village props, battle environments, and font setup now have dedicated modules. The game retains a traditional top-down camera and rectangular world layout.
 
+**Visual pass 4:** Refined the existing top-down pixel art without changing world geometry or gameplay: added small armor/cloth details to Akihiro, expanded the wraith idle animation to four subtle frames, and added deterministic grass/path accents plus roof, cedar-branch, and bark highlights. Sprite output sizes and existing rendering entry points remain compatible.
+
+**Visual pass 5 — Akihiro sprite upgrade:** Replaced Akihiro's procedural placeholder with a bundled transparent 4-direction sprite sheet (down, up, left, right), including idle and walking poses. The sprite is larger than the collision body but its feet remain anchored to the existing ground position; movement speed, collision rectangles, camera, combat, and top-down perspective are unchanged.
+
 **Licensed asset pass:** The game UI now bundles DotGothic16, a Japanese-capable pixel font under the SIL Open Font License. Kenney's CC0 RPG Audio pack supplies footsteps, interface sounds, and battle effects. The pack's generic medieval tiles were reviewed but not used because they conflict with the Japanese village's visual style.
 
 ## Perspective correction
@@ -25,7 +29,7 @@ The project is intentionally a traditional 2D top-down RPG. The unused isometric
 ## What works
 
 - The existing main menu is preserved. New Game enters the village; Settings, Exit, and F11 fullscreen remain available.
-- The player has four facing directions and three cached frames per direction, with a two-step walk cycle and a pixel-art katana.
+- Akihiro uses a bundled 4-direction transparent sprite sheet with cached idle and two-step walking frames; the sprite's feet remain aligned to the existing collision ground point.
 - The player can walk in four directions, sprint, and collide with village scenery.
 - Movement, inventory/journal panels, and successful battle actions have sound effects.
 - A camera follows the player through a tile-based village with houses, roads, trees, a shrine, lanterns, mist, and a notice sign.
@@ -56,7 +60,7 @@ In the VS Code terminal, run:
 - `onikage/player.py` defines the player and movement.
 - `onikage/directions.py` provides normalized top-down movement, eight-way facing, and interaction directions.
 - `onikage/village.py` defines the starting village and its interactable objects.
-- `onikage/art/characters/player_sprite.py` builds the cached directional samurai frames.
+- `onikage/art/characters/player_sprite.py` loads and caches Akihiro's directional frames from `onikage/art/characters/akihiro_sheet.png`.
 - `onikage/art/enemies/wraith_sprite.py` builds the animated wraith frames.
 - `onikage/art/environments/battlefield.py` draws the layered combat backdrop.
 - `onikage/art/environments/village.py` draws houses and cedar trees.
@@ -85,7 +89,7 @@ Automated tests cover damage, duplicate hit prevention, attack frame timing, com
 
 - [DotGothic16](https://fonts.google.com/specimen/DotGothic16) by the DotGothic16 Project Authors, bundled under SIL Open Font License 1.1. The license is in `onikage/assets/fonts/OFL.txt`.
 - [RPG Audio](https://kenney.nl/assets/rpg-audio) by Kenney, selected sound effects bundled under CC0. The license is in `onikage/assets/audio/LICENSE.txt`.
-- No external sprite sheets were added: the reviewed generic RPG pack did not fit the game's Japanese village art direction.
+- `onikage/art/characters/akihiro_sheet.png` is a custom-generated sprite sheet created for this project; no third-party character sprite pack was imported.
 
 ## Not implemented yet
 
@@ -93,6 +97,8 @@ Automated tests cover damage, duplicate hit prevention, attack frame timing, com
 - More NPCs, enemies, quests, bosses, and battle skills.
 - Persistent leveling/stat progression beyond the current experience reward.
 - A fully interactive equipment and inventory system.
-- External sprite sheets and final assets for the remaining characters, enemies, UI, audio, and music.
+- Matching sprite sheets for Hana, other NPCs, and additional enemies; their current visuals remain procedural.
+- Additional environment variations and tile art; current village graphics remain largely procedural.
+- Additional UI icon art, background music, and ambient sound variations.
 - Background music and additional ambient sound effects.
 - Additional enemy types, attack animation art, and combat tuning.

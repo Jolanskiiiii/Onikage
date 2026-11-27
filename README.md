@@ -39,3 +39,8 @@ The bundled DotGothic16 font is licensed under the SIL Open Font License; see
 [`onikage/assets/fonts/OFL.txt`](onikage/assets/fonts/OFL.txt).
 The selected Kenney RPG Audio effects are CC0; see
 [`onikage/assets/audio/LICENSE.txt`](onikage/assets/audio/LICENSE.txt).
+
+
+## Visual direction
+
+ONIKAGE uses a traditional 2D top-down perspective. The current art is palette-driven procedural pixel art; the latest visual pass adds small character, enemy, terrain, roof, and tree details while preserving existing sprite dimensions and gameplay systems. External sprite sheets can be integrated later after their tile size, palette, and license are checked.

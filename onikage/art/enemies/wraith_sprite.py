@@ -15,12 +15,12 @@ _EYE = (234, 105, 62)
 _GLOW = (248, 161, 78)
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=4)
 def wraith_frame(frame: int) -> pygame.Surface:
-    """Return one of two 48x64 idle frames."""
-    frame %= 2
+    """Return one of four 48x64 idle frames with a subtle spectral pulse."""
+    frame %= 4
     image = pygame.Surface((24, 32), pygame.SRCALPHA)
-    sway = frame
+    sway = (0, 1, 0, -1)[frame]
 
     pygame.draw.polygon(
         image,
@@ -57,9 +57,12 @@ def wraith_frame(frame: int) -> pygame.Surface:
     pygame.draw.rect(image, _INK, (10, 16, 2, 2))
     pygame.draw.rect(image, _INK, (14, 16, 2, 2))
     pygame.draw.rect(image, _EYE, (10, 16, 1, 1))
-    pygame.draw.rect(image, _GLOW, (14, 16, 1, 1))
-    pygame.draw.line(image, _BODY_HI, (8, 24), (6, 27), 1)
-    pygame.draw.line(image, _BODY_HI, (18, 23), (20, 26), 1)
+    eye_glow = _GLOW if frame in (0, 1, 3) else _EYE
+    pygame.draw.rect(image, eye_glow, (14, 16, 1, 1))
+    pygame.draw.line(image, _BODY_HI, (8, 24 + sway), (6, 27 + sway), 1)
+    pygame.draw.line(image, _BODY_HI, (18, 23 - sway), (20, 26 - sway), 1)
+    pygame.draw.rect(image, _MOSS, (11, 21 + sway, 2, 1))
+    pygame.draw.rect(image, _BODY_HI, (15, 25 - sway, 2, 1))
     return pygame.transform.scale(image, (48, 64))
 
 
