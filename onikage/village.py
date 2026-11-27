@@ -8,6 +8,7 @@ from onikage.art.objects.village import draw_lantern_lighting, draw_village_obje
 from onikage.art.tiles.village import make_village_tiles
 from onikage.enemy import Enemy
 from onikage.npc import NPC
+from onikage.isometric import IsoTransform, ground_depth
 
 
 class VillageWorld:
@@ -19,6 +20,7 @@ class VillageWorld:
     WORLD_SIZE = (COLUMNS * TILE_SIZE, ROWS * TILE_SIZE)
 
     def __init__(self) -> None:
+        self.iso = IsoTransform()
         self.atmosphere = VillageAtmosphere(self.WORLD_SIZE)
         self.grass_tiles, self.road_tiles = make_village_tiles(self.TILE_SIZE)
         self.buildings = [
@@ -223,3 +225,16 @@ class VillageWorld:
         pygame.draw.rect(surface, (86, 54, 41), (x + 4, y + 4, 18, 12))
         pygame.draw.line(surface, (210, 184, 142), (x + 8, y + 8), (x + 17, y + 8), 2)
         pygame.draw.line(surface, (210, 184, 142), (x + 8, y + 13), (x + 16, y + 13), 1)
+
+    def world_to_screen(self, world_x: float, world_y: float, camera: pygame.Vector2) -> tuple[int, int]:
+        """Project a world point for rendering, relative to the current camera."""
+        projected = self.iso.world_to_screen(world_x, world_y)
+        return round(projected.x - camera.x), round(projected.y - camera.y)
+
+    def sorted_depth_entities(self, entities: list[tuple[float, float, object]]) -> list[object]:
+        """Stable depth sort for objects sharing the ground plane."""
+        return [entity for _, _, entity in sorted(entities, key=lambda item: ground_depth(item[0], item[1]))]
+
+    def point_collides(self, rect: pygame.Rect) -> bool:
+        """Return whether a ground-plane rect intersects an environmental collider."""
+        return any(rect.colliderect(obstacle) for obstacle in self.obstacles)
