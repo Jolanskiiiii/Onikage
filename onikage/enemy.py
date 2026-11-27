@@ -1,10 +1,11 @@
 import pygame
 
 from onikage.art.enemies.wraith_sprite import wraith_frame
+from onikage.combat import Health
 
 
 class Enemy:
-    """A hostile world character and its turn-based battle statistics."""
+    """A hostile world character and its combat statistics."""
 
     def __init__(
         self,
@@ -15,8 +16,7 @@ class Enemy:
         attack_power: int = 12,
     ) -> None:
         self.name = name
-        self.max_health = max_health
-        self.health = max_health
+        self.vitality = Health(max_health)
         self.attack_power = attack_power
         self.experience_reward = 30
         self.rect = pygame.Rect(x + 4, y + 23, 24, 13)
@@ -30,3 +30,20 @@ class Enemy:
         pygame.draw.ellipse(surface, (15, 18, 20), (x - 4, y + 31, 38, 9))
         frame = pygame.time.get_ticks() // 420 % 2
         surface.blit(wraith_frame(frame), (x - 8, y - 27))
+
+    @property
+    def health(self) -> int:
+        return self.vitality.current
+
+    @health.setter
+    def health(self, value: int) -> None:
+        self.vitality.current = max(0, min(self.vitality.maximum, value))
+
+    @property
+    def max_health(self) -> int:
+        return self.vitality.maximum
+
+    @max_health.setter
+    def max_health(self, value: int) -> None:
+        self.vitality.maximum = value
+        self.vitality.current = min(self.vitality.current, value)

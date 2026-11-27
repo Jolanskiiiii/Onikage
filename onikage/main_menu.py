@@ -87,10 +87,11 @@ class MainMenu:
             ("ESC", "Pause to menu"),
         ),
         (
-            ("I", "Inventory"),
-            ("J", "Quest journal"),
-            ("1 - 4 / ENTER", "Battle command"),
-            ("W S / ARROWS", "Pick a command"),
+            ("LMB / RMB", "Light / heavy attacks"),
+            ("1 - 4 / WHEEL", "Select a weapon"),
+            ("V / Q", "Switch mask / ability"),
+            ("U", "Upgrade equipped mask"),
+            ("I / J", "Inventory / quest journal"),
             ("F11", "Fullscreen"),
         ),
     )

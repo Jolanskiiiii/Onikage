@@ -5,7 +5,6 @@ class GameState(Enum):
     MENU = auto()
     EXPLORATION = auto()
     DIALOGUE = auto()
-    COMBAT = auto()
     INVENTORY = auto()
     QUEST_OFFER = auto()
     QUEST_LOG = auto()
@@ -20,14 +19,12 @@ class GameManager:
         GameState.EXPLORATION: {
             GameState.MENU,
             GameState.DIALOGUE,
-            GameState.COMBAT,
             GameState.INVENTORY,
             GameState.QUEST_LOG,
         },
         GameState.DIALOGUE: {GameState.EXPLORATION, GameState.QUEST_OFFER},
         GameState.QUEST_OFFER: {GameState.EXPLORATION},
         GameState.QUEST_LOG: {GameState.EXPLORATION},
-        GameState.COMBAT: {GameState.EXPLORATION},
         GameState.INVENTORY: {GameState.EXPLORATION},
         GameState.SETTINGS: {GameState.MENU},
     }

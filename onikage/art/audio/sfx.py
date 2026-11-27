@@ -57,9 +57,6 @@ class GameAudio:
         if self._sounds:
             self._sounds["bookOpen" if opening else "bookClose"].play()
 
-    def play_battle_action(self, command: int) -> None:
-        sound_names = ("knifeSlice", "cloth1", "knifeSlice2", "handleSmallLeather")
-        if not 0 <= command < len(sound_names):
-            raise ValueError(f"Unknown battle command index: {command}.")
+    def play_combat_attack(self, heavy: bool = False) -> None:
         if self._sounds:
-            self._sounds[sound_names[command]].play()
+            self._sounds["knifeSlice2" if heavy else "knifeSlice"].play()
