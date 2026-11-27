@@ -28,7 +28,7 @@ class Enemy:
         y = self.sprite_position[1] - round(camera.y)
         pygame.draw.ellipse(surface, (14, 26, 28), (x - 7, y - 9, 47, 53), 1)
         pygame.draw.ellipse(surface, (15, 18, 20), (x - 4, y + 31, 38, 9))
-        frame = pygame.time.get_ticks() // 420 % 2
+        frame = pygame.time.get_ticks() // 300 % 4
         surface.blit(wraith_frame(frame), (x - 8, y - 27))
 
     @property
