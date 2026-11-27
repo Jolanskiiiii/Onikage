@@ -15,6 +15,7 @@ from onikage.main_menu import MainMenu
 from onikage.player import Player
 from onikage.quests import Quest, QuestLog, QuestStatus
 from onikage.village import VillageWorld
+from onikage.isometric import sprite_direction
 
 
 class Game:
@@ -70,7 +71,9 @@ class Game:
             state = self.state_manager.current_state
             if state == GameState.MENU:
                 action = self.menu.handle_event(event)
-                if action == "new_game":
+                if action == "resume":
+                    self.state_manager.transition_to(GameState.EXPLORATION)
+                elif action == "new_game":
                     self._start_new_game()
                 elif action == "settings":
                     self.state_manager.transition_to(GameState.SETTINGS)
@@ -80,11 +83,15 @@ class Game:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self.state_manager.transition_to(GameState.MENU)
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if self.menu.back_button.collidepoint(event.pos):
+                    result = self.menu.handle_settings_click(event.pos)
+                    if result == "back":
                         self.state_manager.transition_to(GameState.MENU)
+                    elif result == "fullscreen":
+                        self._toggle_fullscreen()
             elif state == GameState.EXPLORATION:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
+                        self.menu.set_resume_available(True)
                         self.state_manager.transition_to(GameState.MENU)
                     elif event.key == pygame.K_i:
                         self.audio.play_ui(opening=True)
@@ -326,18 +333,7 @@ class Game:
             self._draw_combat()
 
     def _draw_settings(self) -> None:
-        self._draw_scrim(220)
-
-        title = self.title_font.render("SETTINGS", True, (235, 220, 189))
-        self.screen.blit(title, title.get_rect(center=(640, 275)))
-        fullscreen_text = "ON" if self.fullscreen else "OFF"
-        details = self.body_font.render(
-            f"Fullscreen: {fullscreen_text}   (F11 to toggle)",
-            True,
-            (190, 185, 176),
-        )
-        self.screen.blit(details, details.get_rect(center=(640, 355)))
-        self.menu.draw_back_button(self.screen, self.small_font)
+        self.menu.draw_settings_panel(self.screen, self.fullscreen)
 
     def _draw_scrim(self, alpha: int) -> None:
         self.overlay_surface.fill((8, 8, 13, alpha))
@@ -612,7 +608,7 @@ class Game:
         pygame.draw.ellipse(self.screen, (12, 15, 19), (850, 396, 157, 22))
         if self.player is not None:
             self.screen.blit(
-                battle_player_frame(self.player.direction, frame),
+                battle_player_frame(sprite_direction(self.player.direction), frame),
                 (252, 205),
             )
         self.screen.blit(

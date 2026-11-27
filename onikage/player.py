@@ -1,6 +1,12 @@
 import pygame
 
 from onikage.art.characters.player_sprite import player_frame
+from onikage.isometric import (
+    direction_name,
+    interaction_point,
+    isometric_screen_direction,
+    sprite_direction,
+)
 
 
 class Player:
@@ -36,14 +42,10 @@ class Player:
         move_y = int(keys[pygame.K_s] or keys[pygame.K_DOWN]) - int(
             keys[pygame.K_w] or keys[pygame.K_UP]
         )
-        movement = pygame.Vector2(move_x, move_y)
+        movement = isometric_screen_direction(float(move_x), float(move_y))
         self.moving = movement.length_squared() > 0
         if movement.length_squared():
-            movement = movement.normalize()
-            if abs(move_x) > abs(move_y):
-                self.direction = "right" if move_x > 0 else "left"
-            else:
-                self.direction = "down" if move_y > 0 else "up"
+            self.direction = direction_name(float(move_x), float(move_y))
 
         sprinting = (
             keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
@@ -93,14 +95,13 @@ class Player:
         x, y = screen_position
         frame = 1 + int(self.walk_time * 7) % 2 if self.moving else 0
         pygame.draw.ellipse(surface, (13, 16, 17), (x - 1, y + 29, 26, 7))
-        surface.blit(player_frame(self.direction, frame), (x - 4, y - 10))
+        surface.blit(player_frame(sprite_direction(self.direction), frame), (x - 4, y - 10))
+
+    @property
+    def ground_position(self) -> pygame.Vector2:
+        """The player's collision and interaction point on the ground plane."""
+        return pygame.Vector2(self.rect.centerx, self.rect.bottom)
 
     def interaction_point(self) -> tuple[int, int]:
-        facing = {
-            "up": (0, -26),
-            "down": (0, 40),
-            "left": (-28, 8),
-            "right": (28, 8),
-        }
-        dx, dy = facing[self.direction]
-        return self.rect.centerx + dx, self.rect.centery + dy
+        point = interaction_point(self.ground_position, self.direction, 32.0)
+        return round(point.x), round(point.y)
