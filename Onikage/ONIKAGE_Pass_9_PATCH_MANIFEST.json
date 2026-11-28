@@ -1,0 +1,21 @@
+{
+  "pass": "9",
+  "title": "Five Mask Story Alignment",
+  "base": "ONIKAGE Pass 8 baseline",
+  "modified": [
+    "Onikage/onikage/masks.py",
+    "Onikage/onikage/combat.py",
+    "Onikage/onikage/game.py",
+    "Onikage/onikage/village.py",
+    "Onikage/tests/test_masks.py",
+    "Onikage/PROGRESS_REPORT.md"
+  ],
+  "added": ["Onikage/tests/test_mask_story_alignment.py"],
+  "deleted": [],
+  "notes": [
+    "Existing owned legacy mask IDs are migrated and grandfathered.",
+    "New mask acquisition requires the corresponding guardian-defeated progression flag.",
+    "Regional guardians and regions are not implemented in this pass.",
+    "No artwork, audio, font, perspective, collision, or village layout files are changed."
+  ]
+}

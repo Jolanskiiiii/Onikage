@@ -1,0 +1,22 @@
+ONIKAGE TERRAIN GRID FIX
+
+Root cause addressed:
+The generated Kagehama ground atlas contained opaque near-neutral white pixels
+from the generated sprite-sheet separators. Since the renderer crops the atlas
+into 32x32 terrain cells, those separator pixels were repeated as visible white
+tile-boundary lines across the map.
+
+Fix:
+- Removed opaque near-neutral white separator pixels from
+  onikage/art/tiles/kagehama_ground_atlas.png by setting their alpha to 0.
+- Preserved colored grass, earth, and stone pixels.
+- Added tests/test_terrain_atlas_clean.py to reject opaque near-white pixels
+  in the packaged ground atlas.
+
+Run on Windows:
+  py -3.13 -m unittest discover -s tests -v
+  py -3.13 main.py
+
+This addresses the visible white atlas grid. It does not by itself complete the
+full village art replacement or verify Pygame rendering; inspect the live game
+on Windows after extracting this build.

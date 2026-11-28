@@ -1,0 +1,10 @@
+ONIKAGE PASS 11.1 — VILLAGE VISUAL POLISH FIXES
+
+Patch files:
+- onikage/enemy.py — softer Wraith ground shadow and subtle hover motion
+- onikage/art/objects/village.py — adjusted lantern flame/ground illumination
+- onikage/village.py — signboard grounding and subtle road-edge refinement
+- tests/test_village_visuals.py — updated lantern glow alignment assertions
+- PROGRESS_REPORT.md — Pass 11.1 notes
+
+No map dimensions, road footprint, collision rectangles, quest logic, combat values, masks, or save data are changed.

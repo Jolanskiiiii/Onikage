@@ -1,0 +1,13 @@
+ONIKAGE Pass 11 — Village Visual Refinement
+
+Modified files:
+- onikage/art/objects/village.py
+- onikage/village.py
+- tests/test_village_visuals.py
+- PROGRESS_REPORT.md
+
+Changes:
+- Align broad lantern ground glow with lower plinth/contact row.
+- Add deterministic, slightly more varied grass/road boundary pixels without changing road geometry.
+- Add subtle timber details to the village notice board without changing its position or collision footprint.
+- Preserve all scenery positions, collision geometry, shrine/barrel/tree shadows, and traditional top-down layout.

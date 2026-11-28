@@ -1,0 +1,19 @@
+{
+  "pass": "ONIKAGE Pass 8",
+  "base_archive": "Onikage.zip uploaded in this conversation",
+  "modified_files": [
+    "onikage/game.py",
+    "onikage/save_data.py",
+    "PROGRESS_REPORT.md"
+  ],
+  "added_files": [
+    "tests/test_save_data.py",
+    "tests/test_game_saving.py"
+  ],
+  "deleted_files": [
+    "onikage/isometric.py",
+    "tests/test_isometric.py"
+  ],
+  "installation": "Back up the existing project, extract this patch into the existing project root, allow replacement of the listed files, and delete the two paths listed under deleted_files. Do not replace the whole project folder.",
+  "verification": "Python compileall passed for the project. All 16 new Pass 8 unit tests passed in isolated runners using a lightweight Pygame import stub. The full existing suite and actual Pygame game launch remain unverified because Pygame is unavailable in the patch-generation environment."
+}

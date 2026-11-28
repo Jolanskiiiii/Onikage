@@ -1,0 +1,26 @@
+ONIKAGE TERRAIN + LANTERN ALIGNMENT FIX
+
+Root cause:
+- The horizontal road occupies world Y=512..704 (rows 16..21).
+- Several old lantern sprite origins were at Y=550, placing their bases at Y=583 inside the road.
+- The old terrain generator used small, repeated green rectangles and brown dirt flecks,
+  so the grass and road looked nearly unchanged and visually noisy.
+
+Changes:
+- Rebuilt the 32px village grass tiles with layered moss, grass clusters, and leaf accents.
+- Rebuilt road tiles as irregular stone pavers with dark joints, cracks, and moss seams.
+- Repositioned eight lanterns to the upper/lower road verges. Their ground contacts now
+  land exactly at Y=512 or Y=704 (sprite origin Y=479 or Y=671).
+- Kept the lantern artwork, ground anchor, shadows, and glow aligned to the same sprite origin.
+- Reworked Burning Village ground tiles with ash-dark soil and fractured charcoal paving.
+
+Files changed:
+- onikage/art/tiles/village.py
+- onikage/village.py
+- onikage/burning_village.py
+- tests/test_terrain_and_lantern_layout.py
+
+Verification:
+- Python compileall passed.
+- Pygame rendering/tests were not run in this environment because Pygame is unavailable.
+  Run: py -3.13 -m unittest discover -s tests -v
